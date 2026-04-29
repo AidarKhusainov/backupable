@@ -1,0 +1,86 @@
+diff --git a/backuper.sh b/backuper.sh
+--- a/backuper.sh
++++ b/backuper.sh
+@@
+ start_backup() {
+     generate_remark
+     generate_timer
+     generate_template
+     toggle_directories
+     generate_platform
+     generate_password
+     generate_script
+ }
++
++generate_telegram_proxy() {
++    TELEGRAM_PROXY_URL=""
++
++    print "[TELEGRAM PROXY]\\n"
++    print "Optional. Set an HTTP/HTTPS/SOCKS proxy for Telegram Bot API requests."
++    print "Examples:"
++    print "  http://127.0.0.1:8080"
++    print "  socks5h://127.0.0.1:1080"
++    print "  http://user:password@host:port\\n"
++
++    input "Enter Telegram proxy URL (Press Enter to skip): " TELEGRAM_PROXY_URL
++
++    if [[ -z "$TELEGRAM_PROXY_URL" ]]; then
++        success "Telegram proxy disabled."
++    else
++        success "Telegram proxy configured: $TELEGRAM_PROXY_URL"
++    fi
++    sleep 1
++}
+@@
+ generate_platform() {
+@@
+         1)
+             PLATFORM="telegram"
+             LIMITSIZE=49
+             input "Enter the bot token: " BOT_TOKEN
+             input "Enter the chat ID: " CHAT_ID
+             input "Enter the topic ID (Press Enter to skip): " TOPIC_ID
++
++            generate_telegram_proxy
++
++            TELEGRAM_CURL_PROXY_ARGS=()
++            if [[ -n "$TELEGRAM_PROXY_URL" ]]; then
++                TELEGRAM_CURL_PROXY_ARGS=(--proxy "$TELEGRAM_PROXY_URL")
++            fi
++
+-            response=$(curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
++            response=$(curl -s "${TELEGRAM_CURL_PROXY_ARGS[@]}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+                 -d chat_id="$CHAT_ID" \
+                 -d text="Backuper test message")
+@@
+ generate_script() {
+@@
+ BOT_TOKEN='$BOT_TOKEN'
+ CHAT_ID='$CHAT_ID'
+ TOPIC_ID='$TOPIC_ID'
++TELEGRAM_PROXY_URL='$TELEGRAM_PROXY_URL'
+@@
++telegram_curl() {
++    if [[ -n "$TELEGRAM_PROXY_URL" ]]; then
++        curl --proxy "$TELEGRAM_PROXY_URL" "$@"
++    else
++        curl "$@"
++    fi
++}
++
+ send_telegram_file() {
+@@
+-    curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendDocument" \
++    telegram_curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendDocument" \
+         -F chat_id="$CHAT_ID" \
+         -F document=@"$file" \
+         -F caption="$caption" \
+         $topic_arg
+ }
+@@
+-    curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
++    telegram_curl -s -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" \
+         -d chat_id="$CHAT_ID" \
+         -d text="$message" \
+         $topic_arg
+ }
