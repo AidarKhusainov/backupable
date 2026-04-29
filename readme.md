@@ -1,30 +1,30 @@
 <div align="center">
-  <img src="https://github.com/user-attachments/assets/16cc16e2-f1e5-4ae8-9b5f-bbea33fa39bd" alt="Backuper Logo" />
+  <img src="https://github.com/user-attachments/assets/16cc16e2-f1e5-4ae8-9b5f-bbea33fa39bd" alt="Backupable Logo" />
 </div>
 
-# What is Backuper? [Persian](readme-fa.md)
-**Backuper** is an automated backup script with full customization options and support for multiple platforms.  
+# What is Backupable? [Persian](readme-fa.md)
+**Backupable** is an automated backup script with full customization options and support for multiple platforms.
 
-## Supported Platforms  
+## Supported Platforms
 
-- [x] **Gmail**  
-- [x] **Telegram**  
-- [x] **Discord**  
+- [x] **Gmail**
+- [x] **Telegram**
+- [x] **Discord**
 
-## Key Features  
+## Key Features
 
-- **Customizable remarks**  
-- **Automated scheduling**  
-- **Multi-template support**  
-- **Add/remove custom directories**  
-- **Send backups with no size limits**  
-- **Set a password for backup files**  
-- **User-friendly interface**  
-- **Clear old backups**  
-- **Include date and time in file names**  
-- **Optimized for performance**  
+- **Customizable remarks**
+- **Automated scheduling**
+- **Multi-template support**
+- **Add/remove custom directories**
+- **Send backups with no size limits**
+- **Set a password for backup files**
+- **User-friendly interface**
+- **Clear old backups**
+- **Include date and time in file names**
+- **Optimized for performance**
 
-## Supported Templates  
+## Supported Templates
 
 - [x] **X-ui**
 - [x] **S-ui**
@@ -48,18 +48,16 @@
 > We thank [AsanPanelBot](https://t.me/AsanPanelBot) for supporting and sponsoring this. project.
 
 
-## Installation  
+## Installation
 
-To install the latest version, run:  
+To install the latest version, run:
 
 ```bash
-sudo bash -c "$(curl -sL https://github.com/erfjab/Backuper/raw/master/backuper.sh)"
-```  
+git clone https://github.com/AidarKhusainov/backupable.git
+cd backupable
+sudo bash backupable.sh
+```
 
-## 💙 Support the Project  
+## 💙 Support the Project
 
-If you find this project useful, giving a **star (⭐)** is more than enough. Thank you!  
-
-🔹 Join [@ErfJabs](https://t.me/erfjabs) for the latest news and updates.  
-
-[![Stargazers over time](https://starchart.cc/erfjab/Backuper.svg?variant=adaptive)](https://starchart.cc/erfjab/Backuper)  
+If you find this project useful, giving a **star (⭐)** is more than enough. Thank you!
