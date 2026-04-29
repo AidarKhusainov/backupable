@@ -57,6 +57,7 @@ start_backup() {
     generate_timer
     generate_template
     toggle_directories
+    configure_proxy
     generate_platform
     generate_password
     generate_script

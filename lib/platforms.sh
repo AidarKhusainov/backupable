@@ -1,3 +1,44 @@
+shell_quote() {
+    printf "%q" "$1"
+}
+
+curl_command() {
+    if [[ -n "$CURL_PROXY_COMMAND_ARGS" ]]; then
+        printf "curl -s %s" "$CURL_PROXY_COMMAND_ARGS"
+    else
+        printf "curl -s"
+    fi
+}
+
+configure_proxy() {
+    PROXY_URL=""
+    CURL_PROXY_ARGS=()
+    CURL_PROXY_COMMAND_ARGS=""
+
+    clear
+    print "[PROXY]\n"
+    print "Optional proxy for Telegram and Discord delivery."
+    print "Supported formats: http://host:port, socks5://host:port, socks5h://user:pass@host:port.\n"
+
+    while true; do
+        input "Enter proxy URL (Press Enter to skip): " PROXY_URL
+
+        if [[ -z "$PROXY_URL" ]]; then
+            success "Proxy disabled."
+            break
+        elif [[ "$PROXY_URL" =~ ^(https?|socks4a?|socks5h?)://[^[:space:]]+$ ]]; then
+            CURL_PROXY_ARGS=(--proxy "$PROXY_URL")
+            CURL_PROXY_COMMAND_ARGS="--proxy $(shell_quote "$PROXY_URL")"
+            success "Proxy enabled for Telegram and Discord delivery."
+            break
+        else
+            wrong "Invalid proxy URL. Use http://, https://, socks4://, socks4a://, socks5://, or socks5h://."
+        fi
+    done
+
+    sleep 1
+}
+
 generate_password() {
     clear
     print "[PASSWORD PROTECTION]\n"
@@ -116,9 +157,9 @@ telegram_progress() {
         # Validate bot token and chat ID
         log "Checking Telegram bot..."
         if [[ -n "$TOPIC_ID" ]]; then
-            response=$(curl -s -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d message_thread_id="$TOPIC_ID" -d text="Hi, Backupable Test Message!")
+            response=$(curl -s "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d message_thread_id="$TOPIC_ID" -d text="Hi, Backupable Test Message!")
         else
-            response=$(curl -s -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d text="Hi, Backupable Test Message!")
+            response=$(curl -s "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d text="Hi, Backupable Test Message!")
         fi
 
         if [[ "$response" -ne 200 ]]; then
@@ -131,9 +172,9 @@ telegram_progress() {
 
     # Set the platform command for sending files
     if [[ -n "$TOPIC_ID" ]]; then
-        PLATFORM_COMMAND="curl -s -F \"chat_id=$CHAT_ID\" -F \"message_thread_id=$TOPIC_ID\" -F \"document=@\$FILE\" -F \"caption=\$CAPTION\" -F \"parse_mode=HTML\" \"https://api.telegram.org/bot$BOT_TOKEN/sendDocument\""
+        PLATFORM_COMMAND="$(curl_command) -F \"chat_id=$CHAT_ID\" -F \"message_thread_id=$TOPIC_ID\" -F \"document=@\$FILE\" -F \"caption=\$CAPTION\" -F \"parse_mode=HTML\" \"https://api.telegram.org/bot$BOT_TOKEN/sendDocument\""
     else
-        PLATFORM_COMMAND="curl -s -F \"chat_id=$CHAT_ID\" -F \"document=@\$FILE\" -F \"caption=\$CAPTION\" -F \"parse_mode=HTML\" \"https://api.telegram.org/bot$BOT_TOKEN/sendDocument\""
+        PLATFORM_COMMAND="$(curl_command) -F \"chat_id=$CHAT_ID\" -F \"document=@\$FILE\" -F \"caption=\$CAPTION\" -F \"parse_mode=HTML\" \"https://api.telegram.org/bot$BOT_TOKEN/sendDocument\""
     fi
 
     CAPTION="
@@ -164,7 +205,7 @@ discord_progress() {
         done
         # Validate Webhook
         log "Checking Discord Webhook..."
-        response=$(curl -s -o /dev/null -w "%{http_code}" -X POST "$DISCORD_WEBHOOK" -H "Content-Type: application/json" -d '{"content": "Hi, Backupable Test Message!"}')
+        response=$(curl -s "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "$DISCORD_WEBHOOK" -H "Content-Type: application/json" -d '{"content": "Hi, Backupable Test Message!"}')
 
         if [[ "$response" -ne 204 ]]; then
             wrong "Invalid Webhook URL or Discord API error!"
@@ -175,7 +216,7 @@ discord_progress() {
     done
 
     # Set the platform command for sending files
-    PLATFORM_COMMAND="curl -s -F \"file=@\$FILE\" -F \"payload_json={\\\"content\\\": \\\"\$CAPTION\\\"}\" \"$DISCORD_WEBHOOK\""
+    PLATFORM_COMMAND="$(curl_command) -F \"file=@\$FILE\" -F \"payload_json={\\\"content\\\": \\\"\$CAPTION\\\"}\" \"$DISCORD_WEBHOOK\""
     CAPTION="📦 **From** \`${ip}\`\n➖➖➖➖**Sponsor**➖➖➖➖\n[${SPONSORTEXT}](${SPONSORLINK})"
     LIMITSIZE=24
     success "Discord configuration completed successfully."

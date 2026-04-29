@@ -19,6 +19,7 @@
 - **Add/remove custom directories**
 - **Send backups with no size limits**
 - **Set a password for backup files**
+- **Optional proxy for Telegram and Discord delivery**
 - **User-friendly interface**
 - **Clear old backups**
 - **Include date and time in file names**
