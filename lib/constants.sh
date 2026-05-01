@@ -5,8 +5,6 @@ readonly BACKUP_SUFFIX="${TAG}zip"
 readonly DATABASE_SUFFIX="${TAG}sql"
 readonly LOGS_SUFFIX="${TAG}log"
 readonly VERSION="v0.6.0"
-readonly SPONSORTEXT="🚀 ساخت پنل نمایندگی V2Ray بدون دانش فنی! در چند ثانیه پنلت رو بساز و شروع به درآمد کن"
-readonly SPONSORLINK="https://t.me/AsanPanelBot"
 
 
 # ANSI color codes

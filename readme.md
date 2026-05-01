@@ -20,6 +20,7 @@
 - **Send backups with no size limits**
 - **Set a password for backup files**
 - **Optional proxy for Telegram and Discord delivery**
+- **Scenario-based dependency checks**
 - **User-friendly interface**
 - **Clear old backups**
 - **Include date and time in file names**
@@ -45,18 +46,12 @@
 - [x] **MarzGozir**
 - [x] **PasarGuard**
 
-> [!IMPORTANT]
-> We thank [AsanPanelBot](https://t.me/AsanPanelBot) for supporting and sponsoring this. project.
-
-
 ## Installation
 
 To install the latest version, run:
 
 ```bash
-git clone https://github.com/AidarKhusainov/backupable.git
-cd backupable
-sudo bash backupable.sh
+sudo bash -c 'tmp=$(mktemp -d) && curl -sL https://github.com/AidarKhusainov/backupable/archive/refs/heads/master.tar.gz | tar -xz -C "$tmp" --strip-components=1 && bash "$tmp/backupable.sh"'
 ```
 
 ## 💙 Support the Project

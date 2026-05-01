@@ -17,47 +17,56 @@ detect_package_manager() {
     fi
 }
 
-update_os() {
-    local package_manager=$(detect_package_manager)
-    log "Updating the system using $package_manager..."
+package_for_command() {
+    local command_name="$1"
+    local package_manager="$2"
 
-    case $package_manager in
-        apt)
-            apt-get update -y && apt-get upgrade -y || error "Failed to update the system"
+    case "$command_name" in
+        crontab)
+            case "$package_manager" in
+                apt) echo "cron" ;;
+                dnf|yum|pacman) echo "cronie" ;;
+            esac
             ;;
-        dnf|yum)
-            $package_manager update -y || error "Failed to update the system"
+        pg_dump)
+            case "$package_manager" in
+                apt) echo "postgresql-client" ;;
+                dnf|yum|pacman) echo "postgresql" ;;
+            esac
             ;;
-        pacman)
-            pacman -Syu --noconfirm || error "Failed to update the system"
+        mysqldump|mysqlshow)
+            case "$package_manager" in
+                apt) echo "default-mysql-client" ;;
+                dnf|yum|pacman) echo "mariadb" ;;
+            esac
             ;;
+        *) echo "$command_name" ;;
     esac
-    success "System updated successfully"
 }
 
-install_dependencies() {
+install_package() {
     local package_manager=$(detect_package_manager)
-    local packages=("wget" "zip" "cron" "msmtp" "mutt" "postgresql-client")
+    local package_name="$1"
 
-    log "Installing dependencies: ${packages[*]}..."
+    log "Installing package: $package_name"
 
     case $package_manager in
         apt)
-            apt-get install -y "${packages[@]}" || error "Failed to install dependencies"
-            if ! apt-get install -y default-mysql-client; then
-                apt-get install -y mariadb-client || error "Failed to install MySQL/MariaDB client"
+            apt-get update || error "Failed to update package index"
+            if [[ "$package_name" == "default-mysql-client" ]]; then
+                apt-get install -y default-mysql-client || apt-get install -y mariadb-client || error "Failed to install MySQL/MariaDB client"
+            else
+                apt-get install -y "$package_name" || error "Failed to install package: $package_name"
             fi
             ;;
         dnf|yum)
-            packages+=("mariadb")
-            $package_manager install -y "${packages[@]}" || error "Failed to install dependencies"
+            $package_manager install -y "$package_name" || error "Failed to install package: $package_name"
             ;;
         pacman)
-            packages+=("mariadb")
-            pacman -Sy --noconfirm "${packages[@]}" || error "Failed to install dependencies"
+            pacman -Sy --noconfirm "$package_name" || error "Failed to install package: $package_name"
             ;;
     esac
-    success "Dependencies installed successfully"
+    success "Package installed: $package_name"
 }
 
 install_yq() {
@@ -76,4 +85,47 @@ install_yq() {
     chmod +x /usr/bin/yq || error "Failed to set execute permissions on yq."
 
     success "yq installed successfully."
+}
+
+ask_install_package() {
+    local command_name="$1"
+    local package_name="$2"
+    local answer
+
+    warn "Missing required command: $command_name"
+    input "Install package '$package_name'? [y/N]: " answer
+
+    [[ "$answer" =~ ^[Yy]([Ee][Ss])?$ ]]
+}
+
+ensure_command() {
+    local command_name="$1"
+    local manual_message="${2:-}"
+    local package_manager package_name
+
+    if command -v "$command_name" &>/dev/null; then
+        return
+    fi
+
+    if [[ -n "$manual_message" ]]; then
+        error "$manual_message"
+    fi
+
+    if [[ "$command_name" == "yq" ]]; then
+        ensure_command wget
+        ask_install_package yq "yq" || error "Missing required command: yq"
+        install_yq
+    else
+        package_manager=$(detect_package_manager)
+        package_name=$(package_for_command "$command_name" "$package_manager")
+        ask_install_package "$command_name" "$package_name" || error "Missing required command: $command_name"
+        install_package "$package_name"
+    fi
+
+    command -v "$command_name" &>/dev/null || error "Command is still unavailable after installation: $command_name"
+}
+
+ensure_common_dependencies() {
+    ensure_command zip
+    ensure_command crontab
 }

@@ -94,6 +94,7 @@ pasarguard_template() {
     local DB_PATH="/root/_${REMARK}${DATABASE_SUFFIX}"
 
     if [[ "$db_type" == "postgresql" ]]; then
+        ensure_command docker "Docker is required for PasarGuard PostgreSQL backup and must be installed manually."
         local pg_container=$(docker ps --filter "ancestor=postgres" --filter "ancestor=timescaledb/timescaledb" --format "{{.Names}}" | head -n 1)
         if [[ -z "$pg_container" ]]; then
             pg_container=$(docker ps --filter "publish=$db_port" --format "{{.Names}}" | head -n 1)
@@ -101,6 +102,7 @@ pasarguard_template() {
         BACKUP_DB_COMMAND="docker exec -e PGPASSWORD='$db_password' $pg_container pg_dump -U $db_user -d '$db_name' > $DB_PATH"
         DIRECTORIES+=($DB_PATH)
     elif [[ "$db_type" == "mysql" || "$db_type" == "mariadb" ]]; then
+        ensure_command mysqldump
         BACKUP_DB_COMMAND="mysqldump --column-statistics=0 -h $db_host -P $db_port -u $db_user -p'$db_password' '$db_name' > $DB_PATH"
         DIRECTORIES+=($DB_PATH)
     fi
@@ -166,6 +168,7 @@ remnawave_template() {
 
     local DB_PATH="/root/_${REMARK}_${db_name}.sql"
 
+    ensure_command docker "Docker is required for Remnawave database backup and must be installed manually."
     BACKUP_DB_COMMAND="docker exec -e PGPASSWORD='$db_password' \$(docker ps --filter 'publish=6767' --format '{{.Names}}' | head -n 1) pg_dump -U $db_user '$db_name' > $DB_PATH"
     DIRECTORIES+=($DB_PATH)
 
@@ -319,6 +322,7 @@ marzneshin_logs_template() {
     local DB_PATH="/root/_${REMARK}${LOGS_SUFFIX}"
 
     # Check if marzneshin command exists
+    ensure_command marzneshin "marzneshin command is required for Marzneshin logs backup and must be installed manually."
     if ! command -v marzneshin &> /dev/null; then
         error "marzneshin command not found. Please ensure it is installed."
         return 1
@@ -349,6 +353,7 @@ marzneshin_template() {
 
     # Extract database configuration
     local db_type db_name db_password db_port
+    ensure_command yq
     DB_TYPE=$(yq eval '.services.db.image' "$docker_compose_file")
     DB_NAME=$(yq eval '.services.db.environment.MARIADB_DATABASE // .services.db.environment.MYSQL_DATABASE' "$docker_compose_file")
     DB_PASSWORD=$(yq eval '.services.db.environment.MARIADB_ROOT_PASSWORD // .services.db.environment.MYSQL_ROOT_PASSWORD' "$docker_compose_file")
@@ -387,6 +392,7 @@ marzneshin_template() {
 
     # Generate backup command for non-sqlite databases
     if [[ "$DB_TYPE" != "sqlite" ]]; then
+        ensure_command mysqldump
         BACKUP_DB_COMMAND="mysqldump -h 127.0.0.1 --column-statistics=0 -P $DB_PORT -u root -p'$DB_PASSWORD' '$DB_NAME' > $DB_PATH"
         DIRECTORIES+=($DB_PATH)
     fi
@@ -411,6 +417,7 @@ marzban_logs_template() {
     local DB_PATH="/root/_${REMARK}${LOGS_SUFFIX}"
 
     # Check if marzban command exists
+    ensure_command marzban "marzban command is required for Marzban logs backup and must be installed manually."
     if ! command -v marzban &> /dev/null; then
         error "marzban command not found. Please ensure it is installed."
         return 1
@@ -484,6 +491,7 @@ marzban_template() {
     local DB_PATH="/root/_${REMARK}${DATABASE_SUFFIX}"
     # Generate backup command for MySQL/MariaDB
     if [[ "$db_type" != "sqlite3" ]]; then
+        ensure_command mysqldump
         BACKUP_DB_COMMAND="mysqldump --column-statistics=0 -h $db_host -P $db_port -u $db_user -p'$db_password' '$db_name' > $DB_PATH"
         DIRECTORIES+=($DB_PATH)
     fi
@@ -547,6 +555,7 @@ rebecca_template() {
     local DB_PATH="/root/_${REMARK}${DATABASE_SUFFIX}"
     # Generate backup command for MySQL/MariaDB
     if [[ "$db_type" != "sqlite3" ]]; then
+        ensure_command mysqldump
         BACKUP_DB_COMMAND="mysqldump --column-statistics=0 -h $db_host -P $db_port -u $db_user -p'$db_password' '$db_name' > $DB_PATH"
         DIRECTORIES+=($DB_PATH)
     fi
@@ -604,6 +613,8 @@ marzhelp_template() {
 
     # Check if marzhelp database exists
     log "Checking if marzhelp database exists..."
+    ensure_command mysqlshow
+    ensure_command mysqldump
     if ! mysqlshow -h "$db_host" -P "$db_port" -u root -p"$MYSQL_ROOT_PASSWORD" marzhelp &>/dev/null; then
         error "marzhelp database not found or not accessible. Please ensure it exists and you have proper permissions."
         exit 1
@@ -655,6 +666,7 @@ mirzabot_template() {
     fi
 
     # Generate backup command for MySQL/MariaDB
+    ensure_command mysqldump
     local DB_PATH="/root/_${REMARK}${DATABASE_SUFFIX}"
     BACKUP_DB_COMMAND="mysqldump -u $db_user -p'$db_password' '$db_name' > $DB_PATH"
     DIRECTORIES+=($DB_PATH)

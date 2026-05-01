@@ -20,6 +20,7 @@
 - **ارسال بکاپ بدون محدودیت حجمی**
 - **امکان تعیین رمز عبور برای بکاپ‌ها**
 - **پراکسی اختیاری برای ارسال از طریق Telegram و Discord**
+- **بررسی وابستگی‌ها بر اساس سناریوی انتخاب‌شده**
 - **رابط کاربری ساده و کاربردی**
 - **پاکسازی بکاپ‌های قدیمی**
 - **درج تاریخ و ساعت در نام فایل بکاپ**
@@ -45,18 +46,12 @@
 - [x] **MarzGozir**
 - [x] **PasarGuard**
 
-> [!IMPORTANT]
-> ما از مجموعه‌ی [AsanPanelBot](https://t.me/AsanPanelBot) برای پشتیبانی و اسپانسری این پروژه تشکر میکنیم.
-
-
 ## نصب
 
 برای نصب آخرین نسخه، دستور زیر را اجرا کنید:
 
 ```bash
-git clone https://github.com/AidarKhusainov/backupable.git
-cd backupable
-sudo bash backupable.sh
+sudo bash -c 'tmp=$(mktemp -d) && curl -sL https://github.com/AidarKhusainov/backupable/archive/refs/heads/master.tar.gz | tar -xz -C "$tmp" --strip-components=1 && bash "$tmp/backupable.sh"'
 ```
 
 ## 💙 حمایت از پروژه

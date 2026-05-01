@@ -1,7 +1,7 @@
 generate_remark() {
     clear
-    print "[REMARK]\n"
-    print "We need a remark for the backup file (e.g., Master, panel, main_server).\n"
+    print "Step 1/8: Backup job name\n"
+    print "This name is used in generated files and the cron entry (e.g., main_server, panel_1).\n"
 
     while true; do
         input "Enter a remark: " REMARK
@@ -22,7 +22,7 @@ generate_remark() {
 
 generate_caption() {
     clear
-    print "[CAPTION]\n"
+    print "Additional caption\n"
     print "You can add a caption for your backup file (e.g., 'The main server of the company').\n"
 
     input "Enter your caption (Press Enter to skip): " CAPTION
@@ -40,9 +40,9 @@ generate_caption() {
 
 generate_timer() {
     clear
-    print "[TIMER]\n"
-    print "Enter a time interval in minutes for sending backups."
-    print "For example, '10' means backups will be sent every 10 minutes.\n"
+    print "Step 2/8: Schedule\n"
+    print "Choose how often the backup job should run."
+    print "For example, '10' means every 10 minutes.\n"
 
     while true; do
         input "Enter the number of minutes (1-1440): " minutes
@@ -75,8 +75,9 @@ generate_timer() {
 
 generate_template() {
     clear
-    print "[TEMPLATE]\n"
-    print "Choose a backup template. You can add or remove custom DIRECTORIES after selecting.\n"
+    print "Step 3/8: Backup template\n"
+    print "Select the app/service whose data should be backed up."
+    print "You can add or remove paths in the next step.\n"
     print "1) X-ui"
     print "2) S-ui"
     print "3) Hiddify"
@@ -101,78 +102,97 @@ generate_template() {
         input "Enter your template number: " TEMPLATE
         case $TEMPLATE in
             1)
+                TEMPLATE_NAME="X-ui"
                 xui_template
                 break
                 ;;
             2)
+                TEMPLATE_NAME="S-ui"
                 sui_template
                 break
                 ;;
             3)
+                TEMPLATE_NAME="Hiddify"
                 hiddify_template
                 break
                 ;;
             4)
+                TEMPLATE_NAME="Remnawave"
                 remnawave_template
                 break
                 ;;
             5)
+                TEMPLATE_NAME="Rebecca"
                 rebecca_template
                 break
                 ;;
             6)
+                TEMPLATE_NAME="Marzneshin"
                 marzneshin_template
                 break
                 ;;
             7)
+                TEMPLATE_NAME="Marzneshin Logs"
                 marzneshin_logs_template
                 break
                 ;;
             8)
+                TEMPLATE_NAME="Marzban"
                 marzban_template
                 break
                 ;;
             9)
+                TEMPLATE_NAME="Marzban Logs"
                 marzban_logs_template
                 break
                 ;;
             10)
+                TEMPLATE_NAME="MirzaBot"
                 mirzabot_template
                 break
                 ;;
             11)
+                TEMPLATE_NAME="Walpanel"
                 walpanel_template
                 break
                 ;;
             12)
+                TEMPLATE_NAME="HolderBot"
                 holderbot_template
                 break
                 ;;
             13)
+                TEMPLATE_NAME="MarzHelp + Marzban"
                 marzhelp_template
                 break
                 ;;
             14)
+                TEMPLATE_NAME="Phantom"
                 phantom_template
                 break
                 ;;
             15)
+                TEMPLATE_NAME="OvPanel"
                 ovpanel_template
                 break
                 ;;
             16)
+                TEMPLATE_NAME="OvNode"
                 ovnode_template
                 break
                 ;;
             17)
+                TEMPLATE_NAME="MarzGozir"
                 marzgozir_template
                 break
                 ;;
             18)
+                TEMPLATE_NAME="PasarGuard"
                 pasarguard_template
                 break
                 ;;
             0)
+                TEMPLATE_NAME="Custom"
                 break
                 ;;
             *)
@@ -212,8 +232,8 @@ add_directories() {
 
 toggle_directories() {
     clear
-    print "[TOGGLE DIRECTORIES]\n"
-    print "Enter directories to add or remove. Type 'done' when finished.\n"
+    print "Step 4/8: Included paths\n"
+    print "Review auto-detected paths. Enter a path to add/remove it, or type 'done' when finished.\n"
 
     while true; do
         print "\nCurrent directories:"

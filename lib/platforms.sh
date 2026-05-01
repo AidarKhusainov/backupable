@@ -14,9 +14,10 @@ configure_proxy() {
     PROXY_URL=""
     CURL_PROXY_ARGS=()
     CURL_PROXY_COMMAND_ARGS=""
+    PROXY_ENABLED="disabled"
 
     clear
-    print "[PROXY]\n"
+    print "Step 5/8: Proxy\n"
     print "Optional proxy for Telegram and Discord delivery."
     print "Supported formats: http://host:port, socks5://host:port, socks5h://user:pass@host:port.\n"
 
@@ -29,6 +30,7 @@ configure_proxy() {
         elif [[ "$PROXY_URL" =~ ^(https?|socks4a?|socks5h?)://[^[:space:]]+$ ]]; then
             CURL_PROXY_ARGS=(--proxy "$PROXY_URL")
             CURL_PROXY_COMMAND_ARGS="--proxy $(shell_quote "$PROXY_URL")"
+            PROXY_ENABLED="enabled"
             success "Proxy enabled for Telegram and Discord delivery."
             break
         else
@@ -41,10 +43,11 @@ configure_proxy() {
 
 generate_password() {
     clear
-    print "[PASSWORD PROTECTION]\n"
-    print "You can set a password for the archive. The password must contain both letters and numbers, and be at least 8 characters long.\n"
+    print "Step 7/8: Archive password\n"
+    print "Optional password for the zip archive. It must contain only letters and numbers, and be at least 8 characters long.\n"
     print "If you don't want a password, just press Enter.\n"
 
+    PASSWORD_ENABLED="disabled"
     COMPRESS="zip -9 -r"
     while true; do
         input "Enter the password for the archive (or press Enter to skip): " PASSWORD
@@ -67,6 +70,7 @@ generate_password() {
         if [ "$PASSWORD" == "$CONFIRM_PASSWORD" ]; then
             success "Password confirmed."
             COMPRESS="$COMPRESS -e -P $PASSWORD -s ${LIMITSIZE}m"
+            PASSWORD_ENABLED="enabled"
             break
         else
             wrong "Passwords do not match. Please try again."
@@ -76,8 +80,8 @@ generate_password() {
 
 generate_platform() {
     clear
-    print "[PLATFORM]\n"
-    print "Select one platform to send your backup.\n"
+    print "Step 6/8: Delivery method\n"
+    print "Select where backup files should be sent.\n"
     print "1) Telegram"
     print "2) Discord"
     print "3) Gmail"
@@ -89,16 +93,19 @@ generate_platform() {
         case $choice in
             1)
                 PLATFORM="telegram"
+                PLATFORM_NAME="Telegram"
                 telegram_progress
                 break
                 ;;
             2)
                 PLATFORM="discord"
+                PLATFORM_NAME="Discord"
                 discord_progress
                 break
                 ;;
             3)
                 PLATFORM="gmail"
+                PLATFORM_NAME="Gmail"
                 gmail_progress
                 break
                 ;;
@@ -112,8 +119,9 @@ generate_platform() {
 
 telegram_progress() {
     clear
-    print "[TELEGRAM]\n"
+    print "Telegram delivery\n"
     print "To use Telegram, you need to provide a bot token and a chat ID.\n"
+    ensure_command curl
 
     while true; do
         # Get bot token
@@ -177,10 +185,7 @@ telegram_progress() {
         PLATFORM_COMMAND="$(curl_command) -F \"chat_id=$CHAT_ID\" -F \"document=@\$FILE\" -F \"caption=\$CAPTION\" -F \"parse_mode=HTML\" \"https://api.telegram.org/bot$BOT_TOKEN/sendDocument\""
     fi
 
-    CAPTION="
-📦 <b>From </b><code>\${ip}</code>
-<b>➖➖➖➖Sponsor➖➖➖➖</b>
-<a href='${SPONSORLINK}'>${SPONSORTEXT}</a>"
+    CAPTION="📦 <b>From </b><code>\${ip}</code>"
     success "Telegram configuration completed successfully."
     LIMITSIZE=49
     sleep 1
@@ -188,8 +193,9 @@ telegram_progress() {
 
 discord_progress() {
     clear
-    print "[DISCORD]\n"
+    print "Discord delivery\n"
     print "To use Discord, you need to provide a Webhook URL.\n"
+    ensure_command curl
 
     while true; do
         # Get Discord Webhook URL
@@ -217,7 +223,7 @@ discord_progress() {
 
     # Set the platform command for sending files
     PLATFORM_COMMAND="$(curl_command) -F \"file=@\$FILE\" -F \"payload_json={\\\"content\\\": \\\"\$CAPTION\\\"}\" \"$DISCORD_WEBHOOK\""
-    CAPTION="📦 **From** \`${ip}\`\n➖➖➖➖**Sponsor**➖➖➖➖\n[${SPONSORTEXT}](${SPONSORLINK})"
+    CAPTION="📦 **From** \`\${ip}\`"
     LIMITSIZE=24
     success "Discord configuration completed successfully."
     sleep 1
@@ -226,9 +232,11 @@ discord_progress() {
 
 gmail_progress() {
     clear
-    print "[GMAIL]\n"
+    print "Gmail delivery\n"
     print "To use Gmail, you need to provide your email and an app password.\n"
     print "🔴 Do NOT use your real password! Generate an 'App Password' from Google settings.\n"
+    ensure_command msmtp
+    ensure_command mutt
 
     while true; do
         while true; do
@@ -291,7 +299,7 @@ set envelope_from=yes
 EOF
 
             chmod 600 ~/.muttrc
-            CAPTION="<html><body><p><b>📦 From </b><code>\${ip}</code></p><p><b>➖➖➖➖Sponsor➖➖➖➖</b></p><p><a href='${SPONSORLINK}'>${SPONSORTEXT}</a></p></body></html>"
+            CAPTION="<html><body><p><b>📦 From </b><code>\${ip}</code></p></body></html>"
             PLATFORM_COMMAND="echo \$CAPTION | mutt -e 'set content_type=text/html' -s 'Backupable' -a \"\$FILE\" -- \"$GMAIL_ADDRESS\""
             LIMITSIZE=24
             break
