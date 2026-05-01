@@ -17,13 +17,15 @@ menu() {
                 cleanup_backups
                 ;;
             3)
-                if compgen -G "/root/*${SCRIPT_SUFFIX}" > /dev/null; then
-                    for script in /root/*${SCRIPT_SUFFIX}; do
+                local existing_scripts
+                existing_scripts=$(get_existing_scripts)
+                if [ -n "$existing_scripts" ]; then
+                    for script in $existing_scripts; do
                         log "Running backup script: $script"
                         bash "$script"
                     done
                 else
-                    warn "No backup scripts found in /root directory"
+                    warn "No backup scripts found in $BACKUP_DIR directory"
                 fi
                 confirm
                 ;;
@@ -41,7 +43,7 @@ menu() {
 cleanup_backups() {
     print "Removing generated backup scripts, backup files, and matching cron entries..."
 
-    rm -rf /root/*"$SCRIPT_SUFFIX" /root/*"$TAG"* /root/*_backupable.sh /root/ac-backup*.sh /root/*backupable*.sh
+    rm -rf "$BACKUP_DIR"/*"$SCRIPT_SUFFIX" "$BACKUP_DIR"/*"$TAG"* "$BACKUP_DIR"/*_backupable.sh "$BACKUP_DIR"/ac-backup*.sh "$BACKUP_DIR"/*backupable*.sh
 
     if command -v crontab &>/dev/null; then
         crontab -l | grep -v "$SCRIPT_SUFFIX" | crontab -

@@ -3,6 +3,19 @@ generate_remark() {
     print "Step 1/8: Backup job name\n"
     print "This name is used in generated files and the cron entry (e.g., main_server, panel_1).\n"
 
+    print "Existing backup jobs:"
+    local found=false
+    for file in "$BACKUP_DIR"/*"${SCRIPT_SUFFIX}"; do
+        if [ -e "$file" ]; then
+            found=true
+            local remark
+            remark=$(get_remark_from_path "$file")
+            print "  - $remark"
+        fi
+    done
+    $found || print "  (none)"
+    print ""
+
     while true; do
         input "Enter a remark: " REMARK
 
@@ -10,8 +23,8 @@ generate_remark() {
             wrong "Remark must contain only letters, numbers, or underscores."
         elif [ ${#REMARK} -lt 3 ]; then
             wrong "Remark must be at least 3 characters long."
-        elif [ -e "${REMARK}${SCRIPT_SUFFIX}" ]; then
-            wrong "File ${REMARK}${SCRIPT_SUFFIX} already exists. Choose a different remark."
+        elif [ -e "${BACKUP_DIR}/_${REMARK}${SCRIPT_SUFFIX}" ]; then
+            wrong "File _${REMARK}${SCRIPT_SUFFIX} already exists. Choose a different remark."
         else
             success "Backup remark: $REMARK"
             break

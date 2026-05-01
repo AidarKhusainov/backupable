@@ -129,3 +129,18 @@ ensure_common_dependencies() {
     ensure_command zip
     ensure_command crontab
 }
+
+get_remark_from_path() {
+    local file_path="$1"
+    local basename="${file_path##*/}"
+    local remark="${basename#_}"
+    echo "${remark%"$SCRIPT_SUFFIX"}"
+}
+
+get_existing_scripts() {
+    local scripts=()
+    for file in "$BACKUP_DIR"/*"${SCRIPT_SUFFIX}"; do
+        [ -e "$file" ] && scripts+=("$file")
+    done
+    echo "${scripts[@]}"
+}

@@ -1,6 +1,6 @@
 generate_script() {
     clear
-    local BACKUP_PATH="/root/_${REMARK}${SCRIPT_SUFFIX}"
+    local BACKUP_PATH="${BACKUP_DIR}/_${REMARK}${SCRIPT_SUFFIX}"
     log "Generating backup script: $BACKUP_PATH"
     DB_CLEANUP=""
     if [[ -n "$DB_PATH" ]]; then
