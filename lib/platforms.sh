@@ -22,7 +22,7 @@ configure_proxy() {
     print "Supported formats: http://host:port, socks5://host:port, socks5h://user:pass@host:port.\n"
 
     while true; do
-        input "Enter proxy URL (Press Enter to skip): " PROXY_URL
+        secret_input "Enter proxy URL (Press Enter to skip): " PROXY_URL
 
         if [[ -z "$PROXY_URL" ]]; then
             success "Proxy disabled."
@@ -50,7 +50,7 @@ generate_password() {
     PASSWORD_ENABLED="disabled"
     COMPRESS="zip -9 -r"
     while true; do
-        input "Enter the password for the archive (or press Enter to skip): " PASSWORD
+        secret_input "Enter the password for the archive (or press Enter to skip): " PASSWORD
 
         # If password is empty, skip password protection
         if [ -z "$PASSWORD" ]; then
@@ -65,7 +65,7 @@ generate_password() {
             continue
         fi
 
-        input "Confirm the password: " CONFIRM_PASSWORD
+        secret_input "Confirm the password: " CONFIRM_PASSWORD
 
         if [ "$PASSWORD" == "$CONFIRM_PASSWORD" ]; then
             success "Password confirmed."
@@ -126,7 +126,7 @@ telegram_progress() {
     while true; do
         # Get bot token
         while true; do
-            input "Enter the bot token: " BOT_TOKEN
+            secret_input "Enter the bot token: " BOT_TOKEN
             if [[ -z "$BOT_TOKEN" ]]; then
                 wrong "Bot token cannot be empty!"
             elif [[ ! "$BOT_TOKEN" =~ ^[0-9]+:[a-zA-Z0-9_-]{35}$ ]]; then
@@ -200,7 +200,7 @@ discord_progress() {
     while true; do
         # Get Discord Webhook URL
         while true; do
-            input "Enter the Discord Webhook URL: " DISCORD_WEBHOOK
+            secret_input "Enter the Discord Webhook URL: " DISCORD_WEBHOOK
             if [[ -z "$DISCORD_WEBHOOK" ]]; then
                 wrong "Webhook URL cannot be empty!"
             elif [[ ! "$DISCORD_WEBHOOK" =~ ^https://discord\.com/api/webhooks/ ]]; then
@@ -251,7 +251,7 @@ gmail_progress() {
         done
 
         while true; do
-            input "Enter your Gmail app password: " GMAIL_PASSWORD
+            secret_input "Enter your Gmail app password: " GMAIL_PASSWORD
             if [[ -z "$GMAIL_PASSWORD" ]]; then
                 wrong "Password cannot be empty!"
             else
