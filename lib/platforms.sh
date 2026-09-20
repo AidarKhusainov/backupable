@@ -4,9 +4,9 @@ shell_quote() {
 
 curl_command() {
     if [[ -n "$CURL_PROXY_COMMAND_ARGS" ]]; then
-        printf "curl -s %s" "$CURL_PROXY_COMMAND_ARGS"
+        printf "curl -sS --connect-timeout 15 %s" "$CURL_PROXY_COMMAND_ARGS"
     else
-        printf "curl -s"
+        printf "curl -sS --connect-timeout 15"
     fi
 }
 
@@ -165,9 +165,9 @@ telegram_progress() {
         # Validate bot token and chat ID
         log "Checking Telegram bot..."
         if [[ -n "$TOPIC_ID" ]]; then
-            response=$(curl -s "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d message_thread_id="$TOPIC_ID" -d text="Hi, Backupable Test Message!")
+            response=$(curl -sS --connect-timeout 15 "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d message_thread_id="$TOPIC_ID" -d text="Hi, Backupable Test Message!" || printf '000')
         else
-            response=$(curl -s "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d text="Hi, Backupable Test Message!")
+            response=$(curl -sS --connect-timeout 15 "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d text="Hi, Backupable Test Message!" || printf '000')
         fi
 
         if [[ "$response" -ne 200 ]]; then
@@ -211,7 +211,7 @@ discord_progress() {
         done
         # Validate Webhook
         log "Checking Discord Webhook..."
-        response=$(curl -s "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "$DISCORD_WEBHOOK" -H "Content-Type: application/json" -d '{"content": "Hi, Backupable Test Message!"}')
+        response=$(curl -sS --connect-timeout 15 "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "$DISCORD_WEBHOOK" -H "Content-Type: application/json" -d '{"content": "Hi, Backupable Test Message!"}' || printf '000')
 
         if [[ "$response" -ne 204 ]]; then
             wrong "Invalid Webhook URL or Discord API error!"
@@ -252,8 +252,11 @@ gmail_progress() {
 
         while true; do
             secret_input "Enter your Gmail app password: " GMAIL_PASSWORD
+            GMAIL_PASSWORD="${GMAIL_PASSWORD//[[:space:]]/}"
             if [[ -z "$GMAIL_PASSWORD" ]]; then
                 wrong "Password cannot be empty!"
+            elif [[ ! "$GMAIL_PASSWORD" =~ ^[a-zA-Z0-9]+$ ]]; then
+                wrong "App password must contain only letters and numbers."
             else
                 break
             fi
@@ -261,17 +264,15 @@ gmail_progress() {
 
         log "Testing Gmail SMTP authentication..."
 
-        echo -e "Subject: Test Email\n\nThis is a test message." | msmtp \
+        if printf 'Subject: Test Email\n\nThis is a test message.\n' | msmtp \
             --host=smtp.gmail.com \
             --port=587 \
             --tls=on \
             --auth=on \
             --user="$GMAIL_ADDRESS" \
-            --passwordeval="echo '$GMAIL_PASSWORD'" \
+            --passwordeval="printf '%s' '$GMAIL_PASSWORD'" \
             -f "$GMAIL_ADDRESS" \
-            "$GMAIL_ADDRESS"
-
-        if [[ $? -eq 0 ]]; then
+            "$GMAIL_ADDRESS"; then
             success "Authentication successful! Configuring msmtp and mutt..."
 
             cat > ~/.msmtprc <<EOF
