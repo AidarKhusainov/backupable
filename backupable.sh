@@ -1,5 +1,8 @@
 #!/bin/bash
 
+set -o pipefail
+umask 077
+
 APP_ROOT="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd)"
 
 source "$APP_ROOT/lib/constants.sh"
