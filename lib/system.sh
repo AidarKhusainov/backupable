@@ -28,6 +28,9 @@ package_for_command() {
                 dnf|yum|pacman) echo "cronie" ;;
             esac
             ;;
+        flock)
+            echo "util-linux"
+            ;;
         pg_dump)
             case "$package_manager" in
                 apt) echo "postgresql-client" ;;
@@ -128,6 +131,7 @@ ensure_command() {
 ensure_common_dependencies() {
     ensure_command zip
     ensure_command crontab
+    ensure_command flock
 }
 
 get_remark_from_path() {
