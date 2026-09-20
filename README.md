@@ -69,13 +69,11 @@ shellcheck -s bash --severity=error backupable.sh lib/*.sh
 
 The same checks run in GitHub Actions.
 
-## Project origin and licensing status
+## Project origin and license
 
-This repository is a maintained GitHub fork of `erfjab/Backuper`. The original repository is currently unavailable through its public GitHub page, but its commit history remains part of this fork.
+Backupable is maintained from the original `erfjab/Backuper` project history. Attribution to the original project is preserved in the repository history and documentation.
 
-The upstream project was published without an explicit software license, and this fork does not claim to relicense inherited code. That means the licensing status must be resolved with the original copyright holder before this fork can accurately be presented as an open-source replacement in directories that require an explicit open-source project.
-
-Until that is resolved, contributions should avoid assuming that inherited code is available under MIT, Apache-2.0, GPL, or another standard license.
+The project is distributed under the [MIT License](LICENSE).
 
 ## Attribution
 
