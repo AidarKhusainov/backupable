@@ -69,7 +69,6 @@ generate_timer() {
         fi
     done
 
-    TIMER="* * * * *"
     success "Backup interval set to every $minutes minutes."
     sleep 1
 }
