@@ -38,7 +38,7 @@ if [[ "\${1:-}" == "--scheduled" ]]; then
     now=\$(date +%s)
     if [[ -f "\$STATE_FILE" ]]; then
         last_run=\$(cat "\$STATE_FILE" 2>/dev/null || echo 0)
-        if [[ "\$last_run" =~ ^[0-9]+$ ]] && (( now - last_run < INTERVAL_SECONDS )); then
+        if [[ "\$last_run" =~ ^[0-9]+$ ]] && (( last_run <= now && now - last_run < INTERVAL_SECONDS )); then
             exit 0
         fi
     fi
