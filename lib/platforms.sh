@@ -4,9 +4,9 @@ shell_quote() {
 
 curl_command() {
     if [[ -n "$CURL_PROXY_COMMAND_ARGS" ]]; then
-        printf "curl -s %s" "$CURL_PROXY_COMMAND_ARGS"
+        printf "curl -fsS --connect-timeout 15 %s" "$CURL_PROXY_COMMAND_ARGS"
     else
-        printf "curl -s"
+        printf "curl -fsS --connect-timeout 15"
     fi
 }
 
@@ -22,7 +22,7 @@ configure_proxy() {
     print "Supported formats: http://host:port, socks5://host:port, socks5h://user:pass@host:port.\n"
 
     while true; do
-        input "Enter proxy URL (Press Enter to skip): " PROXY_URL
+        secret_input "Enter proxy URL (Press Enter to skip): " PROXY_URL
 
         if [[ -z "$PROXY_URL" ]]; then
             success "Proxy disabled."
@@ -50,7 +50,7 @@ generate_password() {
     PASSWORD_ENABLED="disabled"
     COMPRESS="zip -9 -r"
     while true; do
-        input "Enter the password for the archive (or press Enter to skip): " PASSWORD
+        secret_input "Enter the password for the archive (or press Enter to skip): " PASSWORD
 
         # If password is empty, skip password protection
         if [ -z "$PASSWORD" ]; then
@@ -65,7 +65,7 @@ generate_password() {
             continue
         fi
 
-        input "Confirm the password: " CONFIRM_PASSWORD
+        secret_input "Confirm the password: " CONFIRM_PASSWORD
 
         if [ "$PASSWORD" == "$CONFIRM_PASSWORD" ]; then
             success "Password confirmed."
@@ -126,7 +126,7 @@ telegram_progress() {
     while true; do
         # Get bot token
         while true; do
-            input "Enter the bot token: " BOT_TOKEN
+            secret_input "Enter the bot token: " BOT_TOKEN
             if [[ -z "$BOT_TOKEN" ]]; then
                 wrong "Bot token cannot be empty!"
             elif [[ ! "$BOT_TOKEN" =~ ^[0-9]+:[a-zA-Z0-9_-]{35}$ ]]; then
@@ -165,9 +165,9 @@ telegram_progress() {
         # Validate bot token and chat ID
         log "Checking Telegram bot..."
         if [[ -n "$TOPIC_ID" ]]; then
-            response=$(curl -s "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d message_thread_id="$TOPIC_ID" -d text="Hi, Backupable Test Message!")
+            response=$(curl -sS --connect-timeout 15 "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d message_thread_id="$TOPIC_ID" -d text="Hi, Backupable Test Message!" || printf '000')
         else
-            response=$(curl -s "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d text="Hi, Backupable Test Message!")
+            response=$(curl -sS --connect-timeout 15 "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "https://api.telegram.org/bot$BOT_TOKEN/sendMessage" -d chat_id="$CHAT_ID" -d text="Hi, Backupable Test Message!" || printf '000')
         fi
 
         if [[ "$response" -ne 200 ]]; then
@@ -200,7 +200,7 @@ discord_progress() {
     while true; do
         # Get Discord Webhook URL
         while true; do
-            input "Enter the Discord Webhook URL: " DISCORD_WEBHOOK
+            secret_input "Enter the Discord Webhook URL: " DISCORD_WEBHOOK
             if [[ -z "$DISCORD_WEBHOOK" ]]; then
                 wrong "Webhook URL cannot be empty!"
             elif [[ ! "$DISCORD_WEBHOOK" =~ ^https://discord\.com/api/webhooks/ ]]; then
@@ -211,7 +211,7 @@ discord_progress() {
         done
         # Validate Webhook
         log "Checking Discord Webhook..."
-        response=$(curl -s "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "$DISCORD_WEBHOOK" -H "Content-Type: application/json" -d '{"content": "Hi, Backupable Test Message!"}')
+        response=$(curl -sS --connect-timeout 15 "${CURL_PROXY_ARGS[@]}" -o /dev/null -w "%{http_code}" -X POST "$DISCORD_WEBHOOK" -H "Content-Type: application/json" -d '{"content": "Hi, Backupable Test Message!"}' || printf '000')
 
         if [[ "$response" -ne 204 ]]; then
             wrong "Invalid Webhook URL or Discord API error!"
@@ -224,7 +224,7 @@ discord_progress() {
     # Set the platform command for sending files
     PLATFORM_COMMAND="$(curl_command) -F \"file=@\$FILE\" -F \"payload_json={\\\"content\\\": \\\"\$CAPTION\\\"}\" \"$DISCORD_WEBHOOK\""
     CAPTION="📦 **From** \`\${ip}\`"
-    LIMITSIZE=24
+    LIMITSIZE=19
     success "Discord configuration completed successfully."
     sleep 1
 }
@@ -251,9 +251,12 @@ gmail_progress() {
         done
 
         while true; do
-            input "Enter your Gmail app password: " GMAIL_PASSWORD
+            secret_input "Enter your Gmail app password: " GMAIL_PASSWORD
+            GMAIL_PASSWORD="${GMAIL_PASSWORD//[[:space:]]/}"
             if [[ -z "$GMAIL_PASSWORD" ]]; then
                 wrong "Password cannot be empty!"
+            elif [[ ! "$GMAIL_PASSWORD" =~ ^[a-zA-Z0-9]+$ ]]; then
+                wrong "App password must contain only letters and numbers."
             else
                 break
             fi
@@ -261,20 +264,24 @@ gmail_progress() {
 
         log "Testing Gmail SMTP authentication..."
 
-        echo -e "Subject: Test Email\n\nThis is a test message." | msmtp \
+        if printf 'Subject: Test Email\n\nThis is a test message.\n' | msmtp \
             --host=smtp.gmail.com \
             --port=587 \
             --tls=on \
             --auth=on \
             --user="$GMAIL_ADDRESS" \
-            --passwordeval="echo '$GMAIL_PASSWORD'" \
+            --passwordeval="printf '%s' '$GMAIL_PASSWORD'" \
             -f "$GMAIL_ADDRESS" \
-            "$GMAIL_ADDRESS"
-
-        if [[ $? -eq 0 ]]; then
+            "$GMAIL_ADDRESS"; then
             success "Authentication successful! Configuring msmtp and mutt..."
 
-            cat > ~/.msmtprc <<EOF
+            local msmtp_config="${STATE_DIR}/${REMARK}.msmtprc"
+            local mutt_config="${STATE_DIR}/${REMARK}.muttrc"
+
+            mkdir -p "$STATE_DIR" || error "Failed to create runtime state directory: $STATE_DIR"
+            chmod 700 "$STATE_DIR" || error "Failed to secure runtime state directory: $STATE_DIR"
+
+            cat > "$msmtp_config" <<EOF
 account gmail
 host smtp.gmail.com
 port 587
@@ -284,23 +291,21 @@ tls_starttls on
 user $GMAIL_ADDRESS
 password $GMAIL_PASSWORD
 from $GMAIL_ADDRESS
-logfile ~/.msmtp.log
 account default : gmail
 EOF
+            chmod 600 "$msmtp_config"
 
-            chmod 600 ~/.msmtprc
-
-            cat > ~/.muttrc <<EOF
-set sendmail="/usr/bin/msmtp"
+            cat > "$mutt_config" <<EOF
+set sendmail="/usr/bin/msmtp --file=$msmtp_config"
 set use_from=yes
 set realname="Backup System"
 set from="$GMAIL_ADDRESS"
 set envelope_from=yes
 EOF
+            chmod 600 "$mutt_config"
 
-            chmod 600 ~/.muttrc
             CAPTION="<html><body><p><b>📦 From </b><code>\${ip}</code></p></body></html>"
-            PLATFORM_COMMAND="echo \$CAPTION | mutt -e 'set content_type=text/html' -s 'Backupable' -a \"\$FILE\" -- \"$GMAIL_ADDRESS\""
+            PLATFORM_COMMAND="printf '%s\\n' \"\$CAPTION\" | mutt -F \"$mutt_config\" -e 'set content_type=text/html' -s 'Backupable' -a \"\$FILE\" -- \"$GMAIL_ADDRESS\""
             LIMITSIZE=24
             break
         else

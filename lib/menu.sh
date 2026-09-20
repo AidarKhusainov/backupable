@@ -3,7 +3,7 @@ menu() {
         clear
         print "======== Backupable Menu [$VERSION] ========"
         print ""
-        print "1) Create or update a backup job"
+        print "1) Create a backup job"
         print "2) Remove backup jobs and generated files"
         print "3) Run all existing backup jobs now"
         print "4) Exit"
@@ -43,10 +43,13 @@ menu() {
 cleanup_backups() {
     print "Removing generated backup scripts, backup files, and matching cron entries..."
 
-    rm -rf "$BACKUP_DIR"/*"$SCRIPT_SUFFIX" "$BACKUP_DIR"/*"$TAG"* "$BACKUP_DIR"/*_backupable.sh "$BACKUP_DIR"/ac-backup*.sh "$BACKUP_DIR"/*backupable*.sh
+    rm -rf "$BACKUP_DIR"/*"$SCRIPT_SUFFIX" "$BACKUP_DIR"/*"$TAG"* "$BACKUP_DIR"/*_backupable.sh "$BACKUP_DIR"/ac-backup*.sh "$BACKUP_DIR"/*backupable*.sh "$STATE_DIR"
 
     if command -v crontab &>/dev/null; then
-        crontab -l | grep -v "$SCRIPT_SUFFIX" | crontab -
+        local current_crontab filtered_crontab
+        current_crontab=$(crontab -l 2>/dev/null || true)
+        filtered_crontab=$(printf '%s\n' "$current_crontab" | grep -Fv "$SCRIPT_SUFFIX" || true)
+        printf '%s\n' "$filtered_crontab" | sed '/^[[:space:]]*$/d' | crontab -
     fi
 
     success "All backups and cron jobs have been removed."
@@ -59,7 +62,7 @@ review_backup_configuration() {
     clear
     print "Step 8/8: Review and create\n"
     print "Job name: ${REMARK}"
-    print "Schedule: every ${minutes} minutes (${TIMER})"
+    print "Schedule: every ${minutes} minutes"
     print "Template: ${TEMPLATE_NAME:-Custom}"
     print "Delivery: ${PLATFORM_NAME:-Unknown}"
     print "Proxy: ${PROXY_ENABLED:-disabled}"

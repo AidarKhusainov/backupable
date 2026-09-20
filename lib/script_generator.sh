@@ -1,91 +1,117 @@
 generate_script() {
     clear
     local BACKUP_PATH="${BACKUP_DIR}/_${REMARK}${SCRIPT_SUFFIX}"
-    log "Generating backup script: $BACKUP_PATH"
-    DB_CLEANUP=""
-    if [[ -n "$DB_PATH" ]]; then
-        DB_CLEANUP="rm -rf "$DB_PATH" 2>/dev/null || true"
-    fi
+    local STATE_FILE="${STATE_DIR}/${REMARK}.last-run"
+    local LOCK_FILE="${STATE_DIR}/${REMARK}.lock"
+    local backup_directories_quoted=""
+    local selected_dirs=()
+    local dir
+    local log_file
+    local cron_line
 
-    # Create the backup script
+    for dir in "${DIRECTORIES[@]}"; do
+        [[ -n "$dir" ]] && selected_dirs+=("$dir")
+    done
+
+    (( ${#selected_dirs[@]} > 0 )) || error "No files or directories selected for backup."
+    printf -v backup_directories_quoted '%q ' "${selected_dirs[@]}"
+
+    mkdir -p "$STATE_DIR" || error "Failed to create runtime state directory: $STATE_DIR"
+    chmod 700 "$STATE_DIR" || error "Failed to secure runtime state directory: $STATE_DIR"
+
+    log "Generating backup script: $BACKUP_PATH"
+
     cat <<EOL > "$BACKUP_PATH"
 #!/bin/bash
-set -e
+set -euo pipefail
+umask 077
 
-# Variables
+BACKUP_DIR="$BACKUP_DIR"
+STATE_FILE="$STATE_FILE"
+LOCK_FILE="$LOCK_FILE"
+INTERVAL_SECONDS=$((minutes * 60))
+
+exec 9>"\$LOCK_FILE"
+flock -n 9 || exit 0
+
+if [[ "\${1:-}" == "--scheduled" ]]; then
+    now=\$(date +%s)
+    if [[ -f "\$STATE_FILE" ]]; then
+        last_run=\$(cat "\$STATE_FILE" 2>/dev/null || echo 0)
+        if [[ "\$last_run" =~ ^[0-9]+$ ]] && (( last_run <= now && now - last_run < INTERVAL_SECONDS )); then
+            exit 0
+        fi
+    fi
+fi
+
 ip=\$(hostname -I | awk '{print \$1}')
-timestamp=\$(TZ='Asia/Tehran' date +%m%d-%H%M)
+timestamp=\$(date -u +%Y%m%d-%H%M%SZ)
 CAPTION="${CAPTION}"
-backup_name="/root/\${timestamp}_${REMARK}${BACKUP_SUFFIX}"
-base_name="/root/\${timestamp}_${REMARK}${TAG}"
+backup_name="$BACKUP_DIR/\${timestamp}_${REMARK}${BACKUP_SUFFIX}"
+base_name="$BACKUP_DIR/\${timestamp}_${REMARK}${TAG}"
 
-# Clean up old backup files (only specific backup files)
-rm -rf *"${REMARK}${TAG}"* 2>/dev/null || true
-$DB_CLEANUP
+cleanup_generated_files() {
+    rm -f "\$BACKUP_DIR"/*"${REMARK}${TAG}"* 2>/dev/null || true
+}
 
-# Backup database
+cleanup_generated_files
+trap cleanup_generated_files EXIT
+
 $BACKUP_DB_COMMAND
 
-# Compress files
-if ! $COMPRESS "\$backup_name" ${BACKUP_DIRECTORIES[@]}; then
-    message="Failed to compress ${REMARK} files. Please check the server."
-    echo "\$message"
+if ! $COMPRESS "\$backup_name" $backup_directories_quoted; then
+    echo "Failed to compress ${REMARK} files. Please check the server."
     exit 1
 fi
 
-# Send backup files
-if ls \${base_name}* > /dev/null 2>&1; then
-    for FILE in \${base_name}*; do
+if compgen -G "\${base_name}*" > /dev/null; then
+    for FILE in "\${base_name}"*; do
         echo "Sending file: \$FILE"
         if $PLATFORM_COMMAND; then
             echo "Backup part sent successfully: \$FILE"
         else
-            message="Failed to send ${REMARK} backup part: \$FILE. Please check the server."
-            echo "\$message"
+            echo "Failed to send ${REMARK} backup part: \$FILE. Please check the server."
             exit 1
         fi
     done
     echo "All backup parts sent successfully"
 else
-    message="Backup file not found: \$backup_name. Please check the server."
-    echo "\$message"
+    echo "Backup file not found: \$backup_name. Please check the server."
     exit 1
 fi
 
-rm -rf *"${REMARK}${TAG}"* 2>/dev/null || true
+date +%s > "\$STATE_FILE"
 EOL
 
-    # Make the script executable
-    chmod +x "$BACKUP_PATH"
+    chmod 700 "$BACKUP_PATH" || error "Failed to secure generated backup script: $BACKUP_PATH"
     success "Backup script created: $BACKUP_PATH"
 
-    # Run the backup script with realtime output
+    log_file=$(mktemp /tmp/backupable.XXXXXX.log) || error "Failed to create temporary log file."
+    chmod 600 "$log_file"
+
     log "Running the backup script..."
-    if bash "$BACKUP_PATH" 2>&1 | tee /tmp/backup.log; then
+    if bash "$BACKUP_PATH" 2>&1 | tee "$log_file"; then
         success "Backup script run successfully."
 
-        # Set up cron job
+        cron_line="* * * * * $BACKUP_PATH --scheduled"
         log "Setting up cron job..."
-        if (crontab -l 2>/dev/null; echo "$TIMER $BACKUP_PATH") | crontab -; then
+        if (crontab -l 2>/dev/null | grep -Fv "$BACKUP_PATH" || true; echo "$cron_line") | crontab -; then
             success "Cron job set up successfully. Backups will run every $minutes minutes."
         else
-            error "Failed to set up cron job. Set it up manually: $TIMER $BACKUP_PATH"
-            exit 1
+            rm -f "$log_file"
+            error "Failed to set up cron job. Set it up manually: $cron_line"
         fi
 
-        # Final success message
-        success "🎉 Your backup system is set up and running!"
+        rm -f "$log_file"
+        success "Your backup system is set up and running."
         success "Backup script location: $BACKUP_PATH"
-        success "Cron job: Every $minutes minutes"
+        success "Backup interval: every $minutes minutes"
         success "First backup created and sent."
-        success "Thank you for using this backup script. Enjoy automated backups!"
         exit 0
     else
-        error "Failed to run backup script. Full output:"
-        cat /tmp/backup.log
-        message="Backup script failed to run. Please check the server."
-        eval "$PLATFORM_COMMAND"
-        rm -f /tmp/backup.log
-        exit 1
+        warn "The first backup run failed. The cron job was not installed."
+        cat "$log_file"
+        rm -f "$log_file"
+        error "Fix the reported error and create the backup job again."
     fi
 }

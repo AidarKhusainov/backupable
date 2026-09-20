@@ -5,12 +5,12 @@ ovnode_template() {
     local OVNODE_DB_FOLDER="/opt/ov-node"
 
     # Check if the database file exists
-    if [ ! -f "$OPENVPN_DB_FOLDER" ]; then
-        error "OpenVPN file not found: $OPENVPN_DB_FOLDER"
+    if [ ! -d "$OPENVPN_DB_FOLDER" ]; then
+        error "OpenVPN directory not found: $OPENVPN_DB_FOLDER"
         return 1
     fi
-    if [ ! -f "$OVNODE_DB_FOLDER" ]; then
-        error "Database file not found: $OVNODE_DB_FOLDER"
+    if [ ! -d "$OVNODE_DB_FOLDER" ]; then
+        error "OvNode directory not found: $OVNODE_DB_FOLDER"
         return 1
     fi
 
@@ -34,7 +34,6 @@ pasarguard_template() {
     local BACKUP_DIRECTORIES=("/var/lib/pasarguard")
 
     local DATABASE_URL=$(grep -v '^#' "$env_file" | grep 'SQLALCHEMY_DATABASE_URL' | awk -F '=' '{print $2}' | tr -d ' ' | tr -d '"' | tr -d "'")
-    log "Detected DATABASE_URL: $DATABASE_URL"
     if [[ -z "$DATABASE_URL" || "$DATABASE_URL" == *"sqlite"* ]]; then
         db_type="sqlite"
         db_name=""
@@ -86,7 +85,6 @@ pasarguard_template() {
 
     success "Database type: $db_type"
     success "Database user: $db_user"
-    success "Database password: $db_password"
     success "Database host: $db_host"
     success "Database port: $db_port"
     success "Database name: $db_name"
@@ -120,8 +118,8 @@ marzgozir_template() {
     local MARZGOZIR_DB_FOLDER="/opt/marzgozir/data"
 
     # Check if the database file exists
-    if [ ! -f "$MARZGOZIR_DB_FOLDER" ]; then
-        error "Database file not found: $MARZGOZIR_DB_FOLDER"
+    if [ ! -d "$MARZGOZIR_DB_FOLDER" ]; then
+        error "Data directory not found: $MARZGOZIR_DB_FOLDER"
         return 1
     fi
 
@@ -137,46 +135,26 @@ marzgozir_template() {
 remnawave_template() {
     log "Checking Remnawave configuration..."
 
-    local REMNAWAVE_DR="/opt/remnawave"
-    if [ ! -d "$REMNAWAVE_DR" ]; then
-        error "Directory not found: $REMNAWAVE_DR"
-        return 1
-    fi
+    local REMNAWAVE_DIR="/opt/remnawave"
+    local REMNAWAVE_DB_CONTAINER="remnawave-db"
+    local DB_PATH="${BACKUP_DIR}/_${REMARK}${DATABASE_SUFFIX}"
 
-    env_file="/opt/remnawave/.env"
-    if [ ! -f "$env_file" ]; then
-        error "Environment file not found: $env_file"
-        return 1
-    fi
-
-    # Extract SQLALCHEMY_DATABASE_URL from .env file
-    local SQLALCHEMY_DATABASE_URL=$(grep -v '^#' "$env_file" | grep 'DATABASE_URL' | awk -F '=' '{print $2}' | tr -d ' ' | tr -d '"' | tr -d "'")
-
-    if [[ "$SQLALCHEMY_DATABASE_URL" =~ ^postgresql://([^:]+):([^@]+)@([^:]+):([0-9]+)/(.+)$ ]]; then
-        db_user="${BASH_REMATCH[1]}"
-        db_password="${BASH_REMATCH[2]}"
-        db_name="${BASH_REMATCH[5]}"
-    else
-        error "Invalid DATABASE_URL format in $env_file."
-        return 1
-    fi
-
-    add_directories "$REMNAWAVE_DR"
-    success "Database user: $db_user"
-    success "Database password: $db_password"
-    success "Database name: $db_name"
-
-    local DB_PATH="/root/_${REMARK}_${db_name}.sql"
+    [[ -d "$REMNAWAVE_DIR" ]] || { error "Directory not found: $REMNAWAVE_DIR"; return 1; }
+    [[ -f "$REMNAWAVE_DIR/.env" ]] || { error "Environment file not found: $REMNAWAVE_DIR/.env"; return 1; }
 
     ensure_command docker "Docker is required for Remnawave database backup and must be installed manually."
-    BACKUP_DB_COMMAND="docker exec -e PGPASSWORD='$db_password' \$(docker ps --filter 'publish=6767' --format '{{.Names}}' | head -n 1) pg_dump -U $db_user '$db_name' > $DB_PATH"
-    DIRECTORIES+=($DB_PATH)
 
-    # Export backup variables
+    if [[ "$(docker inspect -f '{{.State.Running}}' "$REMNAWAVE_DB_CONTAINER" 2>/dev/null)" != "true" ]]; then
+        error "Remnawave PostgreSQL container is not running: $REMNAWAVE_DB_CONTAINER"
+        return 1
+    fi
+
+    DIRECTORIES=("$REMNAWAVE_DIR" "$DB_PATH")
+    BACKUP_DB_COMMAND="docker exec $REMNAWAVE_DB_CONTAINER sh -c 'pg_dump -U \"\$POSTGRES_USER\" \"\$POSTGRES_DB\"' > $(printf '%q' "$DB_PATH")"
     BACKUP_DIRECTORIES="${DIRECTORIES[*]}"
-    log "Complete Remnawave"
-    confirm
 
+    log "Remnawave backup will include the full $REMNAWAVE_DIR directory and a PostgreSQL dump."
+    confirm
 }
 
 
@@ -186,15 +164,15 @@ ovpanel_template() {
     local OVPANEL_DB_FOLDER="/opt/ov-panel"
 
     # Check if the database file exists
-    if [ ! -f "$OVPANEL_DB_FOLDER" ]; then
-        error "Database file not found: $OVPANEL_DB_FOLDER"
+    if [ ! -d "$OVPANEL_DB_FOLDER" ]; then
+        error "OvPanel directory not found: $OVPANEL_DB_FOLDER"
         return 1
     fi
 
 
     # Add the database file to BACKUP_DIRECTORIES
     add_directories "$OVPANEL_DB_FOLDER/data"
-    add_directories "$OVPANEL_DB_FOLDER/.env"
+    [[ -f "$OVPANEL_DB_FOLDER/.env" ]] && DIRECTORIES+=("$OVPANEL_DB_FOLDER/.env")
 
     # Export backup variables
     BACKUP_DIRECTORIES="${DIRECTORIES[*]}"
@@ -251,13 +229,13 @@ phantom_template() {
     local PHANTOM_FOLDER="/etc/phantom/config.db"
 
     # Check if the directory exists
-    if [ ! -d "$PHANTOM_FOLDER" ]; then
-        error "Directory not found: $PHANTOM_FOLDER"
+    if [ ! -f "$PHANTOM_FOLDER" ]; then
+        error "Database file not found: $PHANTOM_FOLDER"
         return 1
     fi
 
     # Add the directory to BACKUP_DIRECTORIES
-    add_directories "$PHANTOM_FOLDER"
+    DIRECTORIES+=("$PHANTOM_FOLDER")
 
     # Export backup variables
     BACKUP_DIRECTORIES="${DIRECTORIES[*]}"
@@ -483,7 +461,6 @@ marzban_template() {
     add_directories "/var/lib/marzban"
     success "Database type: $db_type"
     success "Database user: $db_user"
-    success "Database password: $db_password"
     success "Database host: $db_host"
     success "Database port: $db_port"
     success "Database name: $db_name"
@@ -547,7 +524,6 @@ rebecca_template() {
     add_directories "/var/lib/rebecca"
     success "Database type: $db_type"
     success "Database user: $db_user"
-    success "Database password: $db_password"
     success "Database host: $db_host"
     success "Database port: $db_port"
     success "Database name: $db_name"
@@ -630,7 +606,6 @@ marzhelp_template() {
     add_directories "/var/lib/marzban"
     success "Database type: $db_type"
     success "Database user: $db_user"
-    success "Database password: $db_password"
     success "Database host: $db_host"
     success "Database port: $db_port"
     success "Database name: $db_name"

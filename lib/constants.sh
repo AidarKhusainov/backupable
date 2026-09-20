@@ -1,5 +1,6 @@
 # Global constants
 readonly BACKUP_DIR="/root"
+readonly STATE_DIR="${BACKUP_DIR}/.backupable"
 readonly SCRIPT_SUFFIX="_backupable_script.sh"
 readonly TAG="_backupable."
 readonly BACKUP_SUFFIX="${TAG}zip"

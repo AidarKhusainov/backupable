@@ -54,8 +54,8 @@ generate_caption() {
 generate_timer() {
     clear
     print "Step 2/8: Schedule\n"
-    print "Choose how often the backup job should run."
-    print "For example, '10' means every 10 minutes.\n"
+    print "Choose the interval between backup runs."
+    print "Backupable checks scheduled jobs once per minute and runs them only when the configured interval has elapsed.\n"
 
     while true; do
         input "Enter the number of minutes (1-1440): " minutes
@@ -69,20 +69,7 @@ generate_timer() {
         fi
     done
 
-    if [ "$minutes" -le 59 ]; then
-        TIMER="*/$minutes * * * *"
-    elif [ "$minutes" -le 1439 ]; then
-        hours=$((minutes / 60))
-        remaining_minutes=$((minutes % 60))
-        if [ "$remaining_minutes" -eq 0 ]; then
-            TIMER="0 */$hours * * *"
-        else
-            TIMER="*/$remaining_minutes */$hours * * *"
-        fi
-    else
-        TIMER="0 0 * * *"
-    fi
-    success "Cron job set to run every $minutes minutes: $TIMER"
+    success "Backup interval set to every $minutes minutes."
     sleep 1
 }
 
