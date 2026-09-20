@@ -46,7 +46,10 @@ cleanup_backups() {
     rm -rf "$BACKUP_DIR"/*"$SCRIPT_SUFFIX" "$BACKUP_DIR"/*"$TAG"* "$BACKUP_DIR"/*_backupable.sh "$BACKUP_DIR"/ac-backup*.sh "$BACKUP_DIR"/*backupable*.sh "$STATE_DIR"
 
     if command -v crontab &>/dev/null; then
-        crontab -l | grep -v "$SCRIPT_SUFFIX" | crontab -
+        local current_crontab filtered_crontab
+        current_crontab=$(crontab -l 2>/dev/null || true)
+        filtered_crontab=$(printf '%s\n' "$current_crontab" | grep -v "$SCRIPT_SUFFIX" || true)
+        printf '%s\n' "$filtered_crontab" | sed '/^[[:space:]]*$/d' | crontab -
     fi
 
     success "All backups and cron jobs have been removed."
