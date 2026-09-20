@@ -7,7 +7,8 @@ wrong() { echo -e "${COLORS[red]}[WRONG]${COLORS[reset]} $*" >&2; }
 success() { echo -e "${COLORS[spring]}${COLORS[green]}[SUCCESS]${COLORS[reset]} $*"; }
 
 # Interactive functions
-input() { read -p "$(echo -e "${COLORS[orange]}▶ $1${COLORS[reset]} ")" "$2"; }
+input() { read -r -p "$(echo -e "${COLORS[orange]}▶ $1${COLORS[reset]} ")" "$2"; }
+secret_input() { read -r -s -p "$(echo -e "${COLORS[orange]}▶ $1${COLORS[reset]} ")" "$2"; echo; }
 confirm() { read -p "$(echo -e "${COLORS[pink]}Press any key to continue...${COLORS[reset]}")"; }
 
 # Error handling
