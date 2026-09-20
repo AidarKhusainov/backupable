@@ -224,7 +224,7 @@ discord_progress() {
     # Set the platform command for sending files
     PLATFORM_COMMAND="$(curl_command) -F \"file=@\$FILE\" -F \"payload_json={\\\"content\\\": \\\"\$CAPTION\\\"}\" \"$DISCORD_WEBHOOK\""
     CAPTION="📦 **From** \`\${ip}\`"
-    LIMITSIZE=24
+    LIMITSIZE=19
     success "Discord configuration completed successfully."
     sleep 1
 }
