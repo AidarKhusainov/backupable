@@ -4,9 +4,9 @@ shell_quote() {
 
 curl_command() {
     if [[ -n "$CURL_PROXY_COMMAND_ARGS" ]]; then
-        printf "curl -sS --connect-timeout 15 %s" "$CURL_PROXY_COMMAND_ARGS"
+        printf "curl -fsS --connect-timeout 15 %s" "$CURL_PROXY_COMMAND_ARGS"
     else
-        printf "curl -sS --connect-timeout 15"
+        printf "curl -fsS --connect-timeout 15"
     fi
 }
 
