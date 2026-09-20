@@ -305,7 +305,7 @@ EOF
             chmod 600 "$mutt_config"
 
             CAPTION="<html><body><p><b>📦 From </b><code>\${ip}</code></p></body></html>"
-            PLATFORM_COMMAND="printf '%s\\n' \$CAPTION | mutt -F \"$mutt_config\" -e 'set content_type=text/html' -s 'Backupable' -a \"\$FILE\" -- \"$GMAIL_ADDRESS\""
+            PLATFORM_COMMAND="printf '%s\\n' \"\$CAPTION\" | mutt -F \"$mutt_config\" -e 'set content_type=text/html' -s 'Backupable' -a \"\$FILE\" -- \"$GMAIL_ADDRESS\""
             LIMITSIZE=24
             break
         else
