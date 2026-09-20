@@ -79,13 +79,30 @@ install_yq() {
     fi
 
     log "Installing yq..."
-    local ARCH=$(uname -m)
-    local YQ_BINARY="yq_linux_amd64"
+    local arch yq_binary tmp_file
 
-    [[ "$ARCH" == "aarch64" || "$ARCH" == "arm64" ]] && YQ_BINARY="yq_linux_arm64"
+    arch=$(uname -m)
+    case "$arch" in
+        x86_64|amd64)
+            yq_binary="yq_linux_amd64"
+            ;;
+        aarch64|arm64)
+            yq_binary="yq_linux_arm64"
+            ;;
+        *)
+            error "Unsupported architecture for automatic yq installation: $arch"
+            ;;
+    esac
 
-    wget -q "https://github.com/mikefarah/yq/releases/latest/download/$YQ_BINARY" -O /usr/bin/yq || error "Failed to download yq."
-    chmod +x /usr/bin/yq || error "Failed to set execute permissions on yq."
+    tmp_file=$(mktemp) || error "Failed to create temporary file for yq."
+    if ! wget -q --https-only "https://github.com/mikefarah/yq/releases/latest/download/$yq_binary" -O "$tmp_file"; then
+        rm -f "$tmp_file"
+        error "Failed to download yq."
+    fi
+
+    mkdir -p /usr/local/bin || { rm -f "$tmp_file"; error "Failed to create /usr/local/bin."; }
+    install -m 0755 "$tmp_file" /usr/local/bin/yq || { rm -f "$tmp_file"; error "Failed to install yq."; }
+    rm -f "$tmp_file"
 
     success "yq installed successfully."
 }
