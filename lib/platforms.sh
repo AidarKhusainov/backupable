@@ -275,7 +275,13 @@ gmail_progress() {
             "$GMAIL_ADDRESS"; then
             success "Authentication successful! Configuring msmtp and mutt..."
 
-            cat > ~/.msmtprc <<EOF
+            local msmtp_config="${STATE_DIR}/${REMARK}.msmtprc"
+            local mutt_config="${STATE_DIR}/${REMARK}.muttrc"
+
+            mkdir -p "$STATE_DIR" || error "Failed to create runtime state directory: $STATE_DIR"
+            chmod 700 "$STATE_DIR" || error "Failed to secure runtime state directory: $STATE_DIR"
+
+            cat > "$msmtp_config" <<EOF
 account gmail
 host smtp.gmail.com
 port 587
@@ -285,23 +291,21 @@ tls_starttls on
 user $GMAIL_ADDRESS
 password $GMAIL_PASSWORD
 from $GMAIL_ADDRESS
-logfile ~/.msmtp.log
 account default : gmail
 EOF
+            chmod 600 "$msmtp_config"
 
-            chmod 600 ~/.msmtprc
-
-            cat > ~/.muttrc <<EOF
-set sendmail="/usr/bin/msmtp"
+            cat > "$mutt_config" <<EOF
+set sendmail="/usr/bin/msmtp --file=$msmtp_config"
 set use_from=yes
 set realname="Backup System"
 set from="$GMAIL_ADDRESS"
 set envelope_from=yes
 EOF
+            chmod 600 "$mutt_config"
 
-            chmod 600 ~/.muttrc
             CAPTION="<html><body><p><b>📦 From </b><code>\${ip}</code></p></body></html>"
-            PLATFORM_COMMAND="echo \$CAPTION | mutt -e 'set content_type=text/html' -s 'Backupable' -a \"\$FILE\" -- \"$GMAIL_ADDRESS\""
+            PLATFORM_COMMAND="printf '%s\\n' \$CAPTION | mutt -F \"$mutt_config\" -e 'set content_type=text/html' -s 'Backupable' -a \"\$FILE\" -- \"$GMAIL_ADDRESS\""
             LIMITSIZE=24
             break
         else
