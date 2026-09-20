@@ -67,6 +67,7 @@ if docker inspect remnawave-db >/dev/null 2>&1; then
     fail "container remnawave-db already exists; refusing destructive test"
 fi
 
+print() { printf '%s\n' "$*"; }
 log() { printf '[INFO] %s\n' "$*"; }
 warn() { printf '[WARN] %s\n' "$*" >&2; }
 success() { printf '[OK] %s\n' "$*"; }
