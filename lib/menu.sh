@@ -48,7 +48,7 @@ cleanup_backups() {
     if command -v crontab &>/dev/null; then
         local current_crontab filtered_crontab
         current_crontab=$(crontab -l 2>/dev/null || true)
-        filtered_crontab=$(printf '%s\n' "$current_crontab" | grep -v "$SCRIPT_SUFFIX" || true)
+        filtered_crontab=$(printf '%s\n' "$current_crontab" | grep -Fv "$SCRIPT_SUFFIX" || true)
         printf '%s\n' "$filtered_crontab" | sed '/^[[:space:]]*$/d' | crontab -
     fi
 
