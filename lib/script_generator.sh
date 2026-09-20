@@ -42,7 +42,6 @@ if [[ "\${1:-}" == "--scheduled" ]]; then
             exit 0
         fi
     fi
-    printf '%s\n' "\$now" > "\$STATE_FILE"
 fi
 
 ip=\$(hostname -I | awk '{print \$1}')
