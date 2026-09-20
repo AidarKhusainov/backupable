@@ -100,7 +100,7 @@ setup_remnawave_fixture() {
 
     local ready=false
     for _ in {1..30}; do
-        if docker exec remnawave-db pg_isready -U backupable -d remnawave >/dev/null 2>&1; then
+        if [[ "$(docker exec remnawave-db psql -U backupable -d remnawave -tAc 'SELECT 1' 2>/dev/null || true)" == "1" ]]; then
             ready=true
             break
         fi
