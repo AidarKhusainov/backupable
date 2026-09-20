@@ -17,7 +17,7 @@ jobs:
         uses: actions/checkout@v4
 
       - name: Validate Bash syntax
-        run: bash -n backupable.sh lib/*.sh
+        run: bash -n backupable.sh lib/*.sh tests/*.sh
 
       - name: Install ShellCheck
         run: |
@@ -25,4 +25,22 @@ jobs:
           sudo apt-get install -y shellcheck
 
       - name: Run ShellCheck
-        run: shellcheck -s bash --severity=error backupable.sh lib/*.sh
+        run: shellcheck -s bash --severity=error backupable.sh lib/*.sh tests/*.sh
+
+  integration:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install integration dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y cron zip unzip
+
+      - name: Verify Docker
+        run: docker info
+
+      - name: Run integration suite
+        run: sudo env BACKUPABLE_INTEGRATION_TESTS=1 bash tests/integration.sh

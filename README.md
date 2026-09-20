@@ -62,12 +62,16 @@ The first backup is executed before the cron entry is installed. If that run fai
 
 ## Development checks
 
+Static checks:
+
 ```bash
-bash -n backupable.sh lib/*.sh
-shellcheck -s bash --severity=error backupable.sh lib/*.sh
+bash -n backupable.sh lib/*.sh tests/*.sh
+shellcheck -s bash --severity=error backupable.sh lib/*.sh tests/*.sh
 ```
 
-The same checks run in GitHub Actions.
+GitHub Actions also runs a destructive integration suite on an ephemeral runner. It starts a real PostgreSQL container named `remnawave-db`, creates a temporary `/opt/remnawave` fixture, generates and executes a real backup job, validates the archive and SQL dump, verifies scheduling and locking behavior, and exercises Telegram, Discord, proxy, and Gmail configuration through local command mocks.
+
+The integration suite intentionally refuses to run unless `BACKUPABLE_INTEGRATION_TESTS=1` is set and aborts if an existing `/opt/remnawave` deployment or `remnawave-db` container is detected.
 
 ## Project origin and license
 
