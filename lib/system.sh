@@ -147,8 +147,18 @@ ensure_command() {
 
 ensure_common_dependencies() {
     ensure_command zip
-    ensure_command crontab
     ensure_command flock
+
+    case "$SCHEDULER_MODE" in
+        cron)
+            ensure_command crontab
+            ;;
+        internal)
+            ;;
+        *)
+            error "Unsupported scheduler mode: $SCHEDULER_MODE"
+            ;;
+    esac
 }
 
 get_remark_from_path() {

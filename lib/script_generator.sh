@@ -1,6 +1,7 @@
 generate_script() {
     clear
     local BACKUP_PATH="${BACKUP_DIR}/_${REMARK}${SCRIPT_SUFFIX}"
+    local BACKUP_PATH_TMP="${BACKUP_PATH}.tmp"
     local STATE_FILE="${STATE_DIR}/${REMARK}.last-run"
     local LOCK_FILE="${STATE_DIR}/${REMARK}.lock"
     local backup_directories_quoted=""
@@ -21,7 +22,8 @@ generate_script() {
 
     log "Generating backup script: $BACKUP_PATH"
 
-    cat <<EOL > "$BACKUP_PATH"
+    rm -f "$BACKUP_PATH_TMP"
+    cat <<EOL > "$BACKUP_PATH_TMP"
 #!/bin/bash
 set -euo pipefail
 umask 077
@@ -44,7 +46,14 @@ if [[ "\${1:-}" == "--scheduled" ]]; then
     fi
 fi
 
-ip=\$(hostname -I | awk '{print \$1}')
+ip="\${BACKUPABLE_SOURCE_LABEL:-}"
+if [[ -z "\$ip" ]]; then
+    ip=\$(hostname -I 2>/dev/null | awk '{print \$1}' || true)
+fi
+if [[ -z "\$ip" ]]; then
+    ip=\$(hostname -i 2>/dev/null | awk '{print \$1}' || true)
+fi
+[[ -n "\$ip" ]] || ip="unknown"
 timestamp=\$(date -u +%Y%m%d-%H%M%SZ)
 CAPTION="${CAPTION}"
 backup_name="$BACKUP_DIR/\${timestamp}_${REMARK}${BACKUP_SUFFIX}"
@@ -83,24 +92,40 @@ fi
 date +%s > "\$STATE_FILE"
 EOL
 
-    chmod 700 "$BACKUP_PATH" || error "Failed to secure generated backup script: $BACKUP_PATH"
-    success "Backup script created: $BACKUP_PATH"
+    chmod 700 "$BACKUP_PATH_TMP" || error "Failed to secure generated backup script: $BACKUP_PATH_TMP"
+    success "Backup script prepared: $BACKUP_PATH"
 
     log_file=$(mktemp /tmp/backupable.XXXXXX.log) || error "Failed to create temporary log file."
     chmod 600 "$log_file"
 
     log "Running the backup script..."
-    if bash "$BACKUP_PATH" 2>&1 | tee "$log_file"; then
+    if bash "$BACKUP_PATH_TMP" 2>&1 | tee "$log_file"; then
         success "Backup script run successfully."
 
-        cron_line="* * * * * $BACKUP_PATH --scheduled"
-        log "Setting up cron job..."
-        if (crontab -l 2>/dev/null | grep -Fv "$BACKUP_PATH" || true; echo "$cron_line") | crontab -; then
-            success "Cron job set up successfully. Backups will run every $minutes minutes."
-        else
+        mv "$BACKUP_PATH_TMP" "$BACKUP_PATH" || {
             rm -f "$log_file"
-            error "Failed to set up cron job. Set it up manually: $cron_line"
-        fi
+            error "Failed to register generated backup script: $BACKUP_PATH"
+        }
+
+        case "$SCHEDULER_MODE" in
+            cron)
+                cron_line="* * * * * $BACKUP_PATH --scheduled"
+                log "Setting up cron job..."
+                if (crontab -l 2>/dev/null | grep -Fv "$BACKUP_PATH" || true; echo "$cron_line") | crontab -; then
+                    success "Cron job set up successfully. Backups will run every $minutes minutes."
+                else
+                    rm -f "$log_file"
+                    error "Failed to set up cron job. Set it up manually: $cron_line"
+                fi
+                ;;
+            internal)
+                success "Backup job registered for the internal scheduler."
+                ;;
+            *)
+                rm -f "$log_file"
+                error "Unsupported scheduler mode: $SCHEDULER_MODE"
+                ;;
+        esac
 
         rm -f "$log_file"
         success "Your backup system is set up and running."
@@ -109,9 +134,13 @@ EOL
         success "First backup created and sent."
         exit 0
     else
-        warn "The first backup run failed. The cron job was not installed."
+        if [[ "$SCHEDULER_MODE" == "cron" ]]; then
+            warn "The first backup run failed. The cron job was not installed."
+        else
+            warn "The first backup run failed. The job was not registered successfully."
+        fi
         cat "$log_file"
-        rm -f "$log_file"
+        rm -f "$log_file" "$BACKUP_PATH_TMP"
         error "Fix the reported error and create the backup job again."
     fi
 }
