@@ -1,0 +1,9 @@
+.git
+.github
+.gitignore
+README.md
+readme-fa.md
+tests
+docker-compose.yml
+compose.yaml
+LICENSE
