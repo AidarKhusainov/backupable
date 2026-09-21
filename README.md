@@ -30,6 +30,8 @@ External PostgreSQL deployments and non-standard container names are not current
 
 ## Installation
 
+### Native
+
 Review the repository before running a root-level backup tool, then clone and start it:
 
 ```bash
@@ -38,7 +40,36 @@ cd backupable
 sudo bash backupable.sh
 ```
 
-Backupable creates generated jobs under `/root` and installs them in root's crontab.
+Native mode creates generated jobs under `/root` and installs them in root's crontab.
+
+### Docker Compose
+
+For the standard Remnawave Docker deployment, Backupable can also run as a container with its own scheduler:
+
+```bash
+mkdir -p /opt/backupable
+cd /opt/backupable
+curl -fsSLo compose.yaml https://raw.githubusercontent.com/AidarKhusainov/backupable/master/compose.yaml
+
+docker compose pull
+docker compose up -d
+docker compose run --rm backupable setup
+```
+
+The setup command is interactive and uses the same templates and delivery configuration as native mode. Generated jobs and scheduler state are stored in the `backupable-data` volume.
+
+Useful commands:
+
+```bash
+docker compose exec backupable backupable status
+docker compose exec backupable backupable backup-now
+docker compose logs -f backupable
+docker compose pull && docker compose up -d
+```
+
+The Docker image is published as `ghcr.io/aidarkhusainov/backupable:latest` for amd64 and arm64.
+
+Docker mode mounts `/opt/remnawave` read-only and mounts `/var/run/docker.sock` so Backupable can execute `pg_dump` inside the standard `remnawave-db` container. Access to the Docker socket is effectively root-level access to the Docker host; use the image only on a host you trust.
 
 ## Proxy support
 
