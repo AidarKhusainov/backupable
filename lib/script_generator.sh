@@ -1,6 +1,7 @@
 generate_script() {
     clear
     local BACKUP_PATH="${BACKUP_DIR}/_${REMARK}${SCRIPT_SUFFIX}"
+    local BACKUP_PATH_TMP="${BACKUP_PATH}.tmp"
     local STATE_FILE="${STATE_DIR}/${REMARK}.last-run"
     local LOCK_FILE="${STATE_DIR}/${REMARK}.lock"
     local backup_directories_quoted=""
@@ -21,7 +22,8 @@ generate_script() {
 
     log "Generating backup script: $BACKUP_PATH"
 
-    cat <<EOL > "$BACKUP_PATH"
+    rm -f "$BACKUP_PATH_TMP"
+    cat <<EOL > "$BACKUP_PATH_TMP"
 #!/bin/bash
 set -euo pipefail
 umask 077
@@ -90,15 +92,20 @@ fi
 date +%s > "\$STATE_FILE"
 EOL
 
-    chmod 700 "$BACKUP_PATH" || error "Failed to secure generated backup script: $BACKUP_PATH"
-    success "Backup script created: $BACKUP_PATH"
+    chmod 700 "$BACKUP_PATH_TMP" || error "Failed to secure generated backup script: $BACKUP_PATH_TMP"
+    success "Backup script prepared: $BACKUP_PATH"
 
     log_file=$(mktemp /tmp/backupable.XXXXXX.log) || error "Failed to create temporary log file."
     chmod 600 "$log_file"
 
     log "Running the backup script..."
-    if bash "$BACKUP_PATH" 2>&1 | tee "$log_file"; then
+    if bash "$BACKUP_PATH_TMP" 2>&1 | tee "$log_file"; then
         success "Backup script run successfully."
+
+        mv "$BACKUP_PATH_TMP" "$BACKUP_PATH" || {
+            rm -f "$log_file"
+            error "Failed to register generated backup script: $BACKUP_PATH"
+        }
 
         case "$SCHEDULER_MODE" in
             cron)
@@ -133,7 +140,7 @@ EOL
             warn "The first backup run failed. The job was not registered successfully."
         fi
         cat "$log_file"
-        rm -f "$log_file"
+        rm -f "$log_file" "$BACKUP_PATH_TMP"
         error "Fix the reported error and create the backup job again."
     fi
 }
