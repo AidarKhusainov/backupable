@@ -1,4 +1,4 @@
-FROM docker:29.8-cli-alpine3.24
+FROM docker:29.8.1-cli-alpine3.24
 
 RUN apk add --no-cache \
     bash \
