@@ -44,7 +44,14 @@ if [[ "\${1:-}" == "--scheduled" ]]; then
     fi
 fi
 
-ip=\$(hostname -I | awk '{print \$1}')
+ip="\${BACKUPABLE_SOURCE_LABEL:-}"
+if [[ -z "\$ip" ]]; then
+    ip=\$(hostname -I 2>/dev/null | awk '{print \$1}' || true)
+fi
+if [[ -z "\$ip" ]]; then
+    ip=\$(hostname -i 2>/dev/null | awk '{print \$1}' || true)
+fi
+[[ -n "\$ip" ]] || ip="unknown"
 timestamp=\$(date -u +%Y%m%d-%H%M%SZ)
 CAPTION="${CAPTION}"
 backup_name="$BACKUP_DIR/\${timestamp}_${REMARK}${BACKUP_SUFFIX}"
