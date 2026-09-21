@@ -1,38 +1,34 @@
 # Backupable
 
-Backupable is a maintained fork of the original `erfjab/Backuper` project for automated server backups and delivery to Telegram, Discord, or Gmail.
+Backupable is a maintained fork of `erfjab/Backuper`. It creates scheduled server backups and sends them to Telegram, Discord, or Gmail.
 
-The project includes a Remnawave template and is currently maintained with a focus on predictable scheduling, safer handling of credentials, and deployments where Telegram or Discord require an outbound proxy.
+Remnawave is supported directly. Telegram and Discord delivery can also use an HTTP or SOCKS proxy.
 
 ## Features
 
-- automated backup jobs with configurable intervals;
+- configurable backup intervals;
 - Telegram, Discord, and Gmail delivery;
-- optional HTTP/SOCKS proxy for Telegram and Discord;
-- Telegram forum topic support;
+- HTTP/SOCKS proxy support for Telegram and Discord;
+- Telegram forum topics;
 - split archives for platform upload limits;
 - optional ZIP password protection;
-- custom paths and application-specific templates;
-- Remnawave, X-ui, S-ui, Hiddify, Marzban, Marzneshin, and other templates;
-- root-only generated job files and per-job locking;
-- dependency checks for the selected scenario.
+- Remnawave and other application templates;
+- per-job locking and root-only generated files.
 
 ## Remnawave
 
-The Remnawave template targets the standard local Docker deployment:
+The built-in Remnawave template targets the standard local Docker deployment:
 
-- Remnawave directory: `/opt/remnawave`;
-- PostgreSQL container: `remnawave-db`.
+- files under `/opt/remnawave`;
+- PostgreSQL container named `remnawave-db`.
 
-Each run creates a PostgreSQL dump using the database container itself and archives the complete `/opt/remnawave` directory, including the deployment configuration, together with the dump.
+A backup includes the full `/opt/remnawave` directory and a PostgreSQL dump created inside `remnawave-db`.
 
-External PostgreSQL deployments and non-standard container names are not currently handled automatically by this template. Use a custom backup job for those layouts.
+External PostgreSQL deployments and custom container names are not detected automatically. Use a custom job for those layouts.
 
 ## Installation
 
 ### Native
-
-Review the repository before running a root-level backup tool, then clone and start it:
 
 ```bash
 git clone https://github.com/AidarKhusainov/backupable.git
@@ -40,23 +36,25 @@ cd backupable
 sudo bash backupable.sh
 ```
 
-Native mode creates generated jobs under `/root` and installs them in root's crontab.
+Native mode stores generated jobs under `/root` and uses root's crontab.
 
 ### Docker Compose
 
-For the standard Remnawave Docker deployment, Backupable can also run as a container with its own scheduler:
+Docker mode is a convenient option for the standard Remnawave deployment. It uses an internal scheduler, so no host cron setup is needed.
 
 ```bash
 mkdir -p /opt/backupable
 cd /opt/backupable
-curl -fsSLo compose.yaml https://raw.githubusercontent.com/AidarKhusainov/backupable/master/compose.yaml
+
+curl -fsSLo compose.yaml \
+  https://raw.githubusercontent.com/AidarKhusainov/backupable/master/compose.yaml
 
 docker compose pull
 docker compose up -d
 docker compose run --rm backupable setup
 ```
 
-The setup command is interactive and uses the same templates and delivery configuration as native mode. Generated jobs and scheduler state are stored in the `backupable-data` volume.
+Jobs and scheduler state are stored in the `backupable-data` volume.
 
 Useful commands:
 
@@ -64,56 +62,64 @@ Useful commands:
 docker compose exec backupable backupable status
 docker compose exec backupable backupable backup-now
 docker compose logs -f backupable
-docker compose pull && docker compose up -d
+
+docker compose pull
+docker compose up -d
 ```
 
-The Docker image is published as `ghcr.io/aidarkhusainov/backupable:latest` for amd64 and arm64.
+The image is published as `ghcr.io/aidarkhusainov/backupable:latest` for amd64 and arm64.
 
-Docker mode mounts `/opt/remnawave` read-only and mounts `/var/run/docker.sock` so Backupable can execute `pg_dump` inside the standard `remnawave-db` container. Access to the Docker socket is effectively root-level access to the Docker host; use the image only on a host you trust.
+Docker mode mounts `/opt/remnawave` read-only and mounts `/var/run/docker.sock` so Backupable can run `pg_dump` inside `remnawave-db`. Docker socket access is effectively root-level access to the host.
 
 ## Proxy support
 
-Telegram and Discord delivery can use an HTTP, HTTPS, SOCKS4, SOCKS4a, SOCKS5, or SOCKS5h proxy. Credentials embedded in a proxy URL are treated as secrets and are not echoed during interactive setup.
+Telegram and Discord support HTTP, HTTPS, SOCKS4, SOCKS4a, SOCKS5, and SOCKS5h proxies.
 
-This is useful on servers where direct access to Telegram or Discord is unavailable.
-
-## Security notes
-
-- Backupable must run as root because application data and database configuration are commonly root-readable only.
-- Generated backup jobs may contain delivery credentials and, for some legacy templates, database credentials. Generated job files and runtime state are therefore restricted to root.
-- Do not paste generated job files, `.env` files, bot tokens, proxy URLs, webhooks, or database credentials into public issues.
-- ZIP password protection should not be treated as a replacement for modern authenticated encryption.
-- Backup archives can contain highly sensitive application state. Protect the destination account and test your recovery procedure.
+Proxy credentials are treated as secrets and are not echoed during setup.
 
 ## Scheduling
 
-Backupable supports intervals from 1 to 1440 minutes. Root cron invokes scheduled jobs once per minute, while each job keeps private runtime state and runs only after its configured interval has elapsed. `flock` prevents overlapping executions of the same job.
+Backup intervals can be set from 1 to 1440 minutes.
 
-The first backup is executed before the cron entry is installed. If that run fails, the schedule is not installed.
+Native mode uses cron to check jobs once per minute. Docker mode does the same through its internal scheduler. Each generated job keeps its own last-run state and decides whether the configured interval has elapsed.
 
-## Development checks
+`flock` prevents overlapping runs of the same job.
+
+A job is registered only after its first backup succeeds. Failed scheduled runs are retried on the next scheduler tick.
+
+## Security notes
+
+- Backupable runs with root-level access because backups can include root-readable application data.
+- Generated jobs may contain delivery credentials and, for some legacy templates, database credentials. Job files and runtime state are restricted to root.
+- Do not post generated jobs, `.env` files, tokens, proxy URLs, webhooks, or database credentials in public issues.
+- ZIP passwords are not a replacement for modern authenticated encryption.
+- Test restore procedures, not just backup creation.
+- Docker mode uses the Docker socket and therefore has root-equivalent access to the host.
+
+## Development
 
 Static checks:
 
 ```bash
-bash -n backupable.sh lib/*.sh tests/*.sh
-shellcheck -s bash --severity=error backupable.sh lib/*.sh tests/*.sh
+bash -n backupable.sh lib/*.sh docker/*.sh tests/*.sh
+shellcheck -s bash --severity=error backupable.sh lib/*.sh docker/*.sh tests/*.sh
 ```
 
-GitHub Actions also runs a destructive integration suite on an ephemeral runner. It starts a real PostgreSQL container named `remnawave-db`, creates a temporary `/opt/remnawave` fixture, generates and executes a real backup job, validates the archive and SQL dump, verifies scheduling and locking behavior, and exercises Telegram, Discord, proxy, and Gmail configuration through local command mocks.
+CI also runs two integration suites:
 
-The integration suite intentionally refuses to run unless `BACKUPABLE_INTEGRATION_TESTS=1` is set and aborts if an existing `/opt/remnawave` deployment or `remnawave-db` container is detected.
+- native Remnawave backup flow with a real PostgreSQL container;
+- Docker image build and runtime flow, including the internal scheduler.
+
+Telegram, Discord, proxy, and Gmail setup are tested with local mocks, so CI does not require real delivery credentials.
 
 ## Project origin and license
 
-Backupable is maintained from the original `erfjab/Backuper` project history. Attribution to the original project is preserved in the repository history and documentation.
+Backupable continues the original `erfjab/Backuper` project history and keeps attribution to the upstream project.
 
-The project is distributed under the [MIT License](LICENSE).
+Licensed under the [MIT License](LICENSE).
 
 ## Attribution
 
 Original project: `erfjab/Backuper`.
 
-Current maintenance and additional hardening: AidarKhusainov.
-
-The legacy Persian README is available in [readme-fa.md](readme-fa.md) and may lag behind the current English documentation.
+Current maintenance: AidarKhusainov.
