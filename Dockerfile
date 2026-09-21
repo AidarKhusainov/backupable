@@ -21,6 +21,7 @@ COPY lib /app/lib
 COPY docker /app/docker
 
 RUN chmod 0755 /app/backupable.sh /app/docker/entrypoint.sh /app/docker/scheduler.sh /app/docker/healthcheck.sh \
+    && ln -s /app/docker/entrypoint.sh /usr/local/bin/backupable \
     && mkdir -p /var/lib/backupable/jobs /var/lib/backupable/state \
     && chmod 0700 /var/lib/backupable /var/lib/backupable/jobs /var/lib/backupable/state
 
