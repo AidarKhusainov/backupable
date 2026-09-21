@@ -1,5 +1,7 @@
 # Backupable
 
+![Backupable preview](assets/backupable-preview.webp)
+
 Backupable is a maintained fork of `erfjab/Backuper`. It creates scheduled server backups and sends them to Telegram, Discord, or Gmail.
 
 Remnawave is supported directly. Telegram and Discord delivery can also use an HTTP or SOCKS proxy.
