@@ -1,59 +1,85 @@
-<div align="center">
-  <img src="https://github.com/user-attachments/assets/16cc16e2-f1e5-4ae8-9b5f-bbea33fa39bd" alt="لوگوی Backupable" />
-</div>
+# Backupable
 
-# Backupable چیه؟
-**Backupable** یک اسکریپت بکاپ‌گیری خودکار با قابلیت سفارشی‌سازی کامل و پشتیبانی از چندین پلتفرم است.
+Backupable نسخه نگه‌داری‌شده‌ای از پروژه `erfjab/Backuper` است. این ابزار از سرور بکاپ زمان‌بندی‌شده می‌گیرد و فایل‌ها را از طریق Telegram، Discord یا Gmail ارسال می‌کند.
 
-## پلتفرم‌های پشتیبانی‌شده
+پشتیبانی از Remnawave به‌صورت مستقیم وجود دارد و برای Telegram و Discord می‌توان HTTP/SOCKS proxy تنظیم کرد.
 
-- [x] **Gmail**
-- [x] **Telegram**
-- [x] **Discord**
+## امکانات
 
-## ویژگی‌های کلیدی
-
-- **اضافه کردن توضیحات سفارشی**
-- **زمان‌بندی خودکار**
-- **پشتیبانی از چندین قالب**
-- **افزودن/حذف دایرکتوری‌های دلخواه**
-- **ارسال بکاپ بدون محدودیت حجمی**
-- **امکان تعیین رمز عبور برای بکاپ‌ها**
-- **پراکسی اختیاری برای ارسال از طریق Telegram و Discord**
-- **بررسی وابستگی‌ها بر اساس سناریوی انتخاب‌شده**
-- **رابط کاربری ساده و کاربردی**
-- **پاکسازی بکاپ‌های قدیمی**
-- **درج تاریخ و ساعت در نام فایل بکاپ**
-- **بهینه‌شده برای عملکرد بهتر**
-
-## قالب‌های پشتیبانی‌شده
-
-- [x] **X-ui**
-- [x] **S-ui**
-- [x] **Hiddify**
-- [x] **Remnawave**
-- [x] **Rebecca**
-- [x] **Marzneshin**
-- [x] **Marzneshin Logs**
-- [x] **Marzban**
-- [x] **Marzban Logs**
-- [x] **MirzaBot**
-- [x] **Walpanel**
-- [x] **HolderBot**
-- [x] **MarzHelp + Marzban**
-- [x] **Phantom**
-- [x] **OvPanel**
-- [x] **MarzGozir**
-- [x] **PasarGuard**
+- زمان‌بندی قابل تنظیم;
+- ارسال از طریق Telegram، Discord و Gmail;
+- پشتیبانی از HTTP/SOCKS proxy برای Telegram و Discord;
+- پشتیبانی از Telegram topic;
+- تقسیم فایل برای محدودیت حجم سرویس‌ها;
+- رمز اختیاری برای ZIP;
+- قالب آماده برای Remnawave و چند سرویس دیگر;
+- جلوگیری از اجرای هم‌زمان یک job با `flock`.
 
 ## نصب
 
-برای نصب آخرین نسخه، دستور زیر را اجرا کنید:
+### Native
 
 ```bash
-sudo bash -c 'tmp=$(mktemp -d) && curl -sL https://github.com/AidarKhusainov/backupable/archive/refs/heads/master.tar.gz | tar -xz -C "$tmp" --strip-components=1 && bash "$tmp/backupable.sh"'
+git clone https://github.com/AidarKhusainov/backupable.git
+cd backupable
+sudo bash backupable.sh
 ```
 
-## 💙 حمایت از پروژه
+در حالت Native، jobها زیر `/root` ساخته می‌شوند و از crontab کاربر root استفاده می‌شود.
 
-اگر این پروژه برای شما مفید بوده، با دادن یک **ستاره (⭐)** از آن حمایت کنید. سپاسگزاریم!
+### Docker Compose
+
+برای نصب استاندارد Docker در Remnawave می‌توانید از Compose استفاده کنید:
+
+```bash
+mkdir -p /opt/backupable
+cd /opt/backupable
+
+curl -fsSLo compose.yaml \
+  https://raw.githubusercontent.com/AidarKhusainov/backupable/master/compose.yaml
+
+docker compose pull
+docker compose up -d
+docker compose run --rm backupable setup
+```
+
+Docker mode scheduler داخلی دارد و به host cron نیاز ندارد.
+
+دستورهای مفید:
+
+```bash
+docker compose exec backupable backupable status
+docker compose exec backupable backupable backup-now
+docker compose logs -f backupable
+```
+
+Image رسمی پروژه:
+
+`ghcr.io/aidarkhusainov/backupable:latest`
+
+Docker mode مسیر `/opt/remnawave` را read-only mount می‌کند و برای اجرای `pg_dump` داخل کانتینر `remnawave-db` به `/var/run/docker.sock` دسترسی دارد. این دسترسی عملاً سطح دسترسی root روی Docker host می‌دهد.
+
+## Remnawave
+
+قالب Remnawave برای deployment استاندارد در نظر گرفته شده است:
+
+- مسیر `/opt/remnawave`;
+- کانتینر PostgreSQL با نام `remnawave-db`.
+
+هر بکاپ شامل فایل‌های کامل `/opt/remnawave` و dump دیتابیس PostgreSQL است.
+
+## امنیت
+
+- فایل‌های job و state فقط برای root قابل دسترسی هستند.
+- token، webhook، proxy URL، فایل `.env` و اطلاعات دیتابیس را در issue عمومی منتشر نکنید.
+- پسورد ZIP جایگزین encryption مدرن نیست.
+- فقط گرفتن بکاپ کافی نیست؛ restore را هم تست کنید.
+- Docker mode به Docker socket دسترسی دارد و در عمل دسترسی root-equivalent به host دارد.
+
+## مجوز
+
+پروژه تحت [MIT License](LICENSE) منتشر می‌شود.
+
+پروژه اصلی: `erfjab/Backuper`.
+
+نگه‌داری فعلی: AidarKhusainov.
