@@ -1,12 +1,13 @@
 # Global constants
-readonly BACKUP_DIR="/root"
-readonly STATE_DIR="${BACKUP_DIR}/.backupable"
+readonly BACKUP_DIR="${BACKUPABLE_BACKUP_DIR:-/root}"
+readonly STATE_DIR="${BACKUPABLE_STATE_DIR:-${BACKUP_DIR}/.backupable}"
+readonly SCHEDULER_MODE="${BACKUPABLE_SCHEDULER_MODE:-cron}"
 readonly SCRIPT_SUFFIX="_backupable_script.sh"
 readonly TAG="_backupable."
 readonly BACKUP_SUFFIX="${TAG}zip"
 readonly DATABASE_SUFFIX="${TAG}sql"
 readonly LOGS_SUFFIX="${TAG}log"
-readonly VERSION="v0.6.0"
+readonly VERSION="v0.7.0"
 
 
 # ANSI color codes
