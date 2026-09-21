@@ -93,14 +93,25 @@ EOL
     if bash "$BACKUP_PATH" 2>&1 | tee "$log_file"; then
         success "Backup script run successfully."
 
-        cron_line="* * * * * $BACKUP_PATH --scheduled"
-        log "Setting up cron job..."
-        if (crontab -l 2>/dev/null | grep -Fv "$BACKUP_PATH" || true; echo "$cron_line") | crontab -; then
-            success "Cron job set up successfully. Backups will run every $minutes minutes."
-        else
-            rm -f "$log_file"
-            error "Failed to set up cron job. Set it up manually: $cron_line"
-        fi
+        case "$SCHEDULER_MODE" in
+            cron)
+                cron_line="* * * * * $BACKUP_PATH --scheduled"
+                log "Setting up cron job..."
+                if (crontab -l 2>/dev/null | grep -Fv "$BACKUP_PATH" || true; echo "$cron_line") | crontab -; then
+                    success "Cron job set up successfully. Backups will run every $minutes minutes."
+                else
+                    rm -f "$log_file"
+                    error "Failed to set up cron job. Set it up manually: $cron_line"
+                fi
+                ;;
+            internal)
+                success "Backup job registered for the internal scheduler."
+                ;;
+            *)
+                rm -f "$log_file"
+                error "Unsupported scheduler mode: $SCHEDULER_MODE"
+                ;;
+        esac
 
         rm -f "$log_file"
         success "Your backup system is set up and running."
@@ -109,7 +120,11 @@ EOL
         success "First backup created and sent."
         exit 0
     else
-        warn "The first backup run failed. The cron job was not installed."
+        if [[ "$SCHEDULER_MODE" == "cron" ]]; then
+            warn "The first backup run failed. The cron job was not installed."
+        else
+            warn "The first backup run failed. The job was not registered successfully."
+        fi
         cat "$log_file"
         rm -f "$log_file"
         error "Fix the reported error and create the backup job again."
