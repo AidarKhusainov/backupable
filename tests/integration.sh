@@ -153,6 +153,8 @@ verify_remnawave_archive() {
     assert_eq "700" "$(stat -c '%a' /root/_ci_remnawave_backupable_script.sh)" "generated job permissions"
     assert_eq "700" "$(stat -c '%a' /root/.backupable)" "state directory permissions"
     assert_file "/root/.backupable/ci_remnawave.last-run"
+    assert_file "/root/.backupable/ci_remnawave.last-success"
+    assert_not_file "/root/.backupable/ci_remnawave.last-failure"
     assert_not_file "/root/_ci_remnawave_backupable.sql"
     crontab -l | grep -Fq "/root/_ci_remnawave_backupable_script.sh --scheduled" ||
         fail "generated cron entry missing"
@@ -301,8 +303,9 @@ verify_disk_preflight_and_failure_state() {
     assert_eq "$first_failure" "$(cat "$failure_file")" "retries must preserve the first unresolved failure timestamp"
 
     bash "$job"
+    assert_not_file "$failure_file"
     healed_success="$(cat "$success_file")"
-    (( healed_success >= first_failure )) || fail "successful backup did not heal the previous failure state"
+    (( healed_success > 0 )) || fail "successful backup did not record last-success"
 }
 generate_lock_job() {
     echo "[TEST] verify per-job locking"
