@@ -7,7 +7,7 @@ readonly TAG="_backupable."
 readonly BACKUP_SUFFIX="${TAG}zip"
 readonly DATABASE_SUFFIX="${TAG}sql"
 readonly LOGS_SUFFIX="${TAG}log"
-readonly VERSION="v0.7.0"
+readonly VERSION="v0.8.0"
 
 
 # ANSI color codes
