@@ -116,7 +116,7 @@ resolve_daily_slot_for_date() {
 }
 
 latest_daily_slot_epoch() {
-    local now_epoch="${1:-\$(date +%s)}"
+    local now_epoch="\${1:-\$(date +%s)}"
     local today slot_epoch previous_day
 
     today=\$(TZ="\$SCHEDULE_TZ" date -d "@\$now_epoch" +%F)
