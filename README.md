@@ -16,7 +16,10 @@ Remnawave is supported directly. Telegram and Discord delivery can also use an H
 - split archives for platform upload limits;
 - optional ZIP password protection;
 - Remnawave and other application templates;
-- per-job locking and root-only generated files.
+- per-job locking and root-only generated files;
+- bounded job and network transfer runtime with retry/low-speed protection;
+- disk-space preflight before archive creation;
+- persistent last-success and unresolved-failure state for Docker health reporting.
 
 ## Remnawave
 
@@ -28,6 +31,17 @@ The built-in Remnawave template targets the standard local Docker deployment:
 A backup includes the full `/opt/remnawave` directory and a PostgreSQL dump created inside `remnawave-db`.
 
 External PostgreSQL deployments and custom container names are not detected automatically. Use a custom job for those layouts.
+
+### Remnawave restore
+
+For disaster recovery, restore onto a fresh compatible Remnawave/PostgreSQL deployment. The backup contains both the application files and a plain PostgreSQL dump. Restore the files first, then feed the SQL dump into an empty target database, for example:
+
+```bash
+cat _remnawave_backupable.sql | \
+  docker exec -i remnawave-db sh -c 'psql -v ON_ERROR_STOP=1 -U "$POSTGRES_USER" "$POSTGRES_DB"'
+```
+
+CI restores the generated Remnawave dump into a clean PostgreSQL database and verifies the restored data. Keep testing your actual disaster-recovery procedure after meaningful infrastructure changes.
 
 ## Installation
 
@@ -91,9 +105,23 @@ Native mode uses root cron as a one-minute poller. Docker mode uses the internal
 
 Daily scheduling is slot-based rather than `last success + 24h`. For example, a job scheduled for `00:00` that fails and finally succeeds at `00:07` records the `00:00` slot as completed, so the next scheduled run is still `00:00` the following day. Failed scheduled runs are retried on the next scheduler tick without moving the next slot.
 
+DST is handled as wall-clock scheduling: if the requested local time does not exist during a spring-forward transition, that day's slot runs at the first valid local minute after the gap. An ambiguous fall-back slot is still completed only once.
+
 If Backupable was stopped when a daily slot occurred, the most recent missed slot is run once after startup. It does not replay every missed day. Manual `backup-now` runs do not consume or shift a daily scheduled slot.
 
-`flock` prevents overlapping runs of the same job. A job is registered only after its first backup succeeds.
+`flock` prevents overlapping runs of the same job. A job is registered only after its first backup succeeds. Scheduled and Docker `backup-now` executions are also bounded by a per-job timeout so one stuck backup cannot block the scheduler indefinitely.
+
+## Runtime safety
+
+Defaults can be overridden through environment variables:
+
+- `BACKUPABLE_JOB_TIMEOUT_SECONDS=7200` — hard limit for one scheduled/manual job;
+- `BACKUPABLE_DISK_SAFETY_BYTES=67108864` — free-space safety margin kept in addition to the measured backup inputs;
+- `BACKUPABLE_HEALTH_FAILURE_GRACE_SECONDS=300` — Docker health grace period for an unresolved backup failure.
+
+Telegram and Discord uploads use a connect timeout, an overall transfer timeout, low-speed abort protection, and bounded retries for transient errors. Backupable intentionally does not use curl's `--retry-all-errors`, because blindly retrying every upload error can create duplicate deliveries.
+
+A failed run records the first unresolved failure timestamp. Retries keep that timestamp stable, and the next successful run clears it. Docker health becomes unhealthy after the configured grace period while such a failure remains unresolved.
 
 ## Security notes
 
@@ -115,7 +143,7 @@ shellcheck -s bash --severity=error backupable.sh lib/*.sh docker/*.sh tests/*.s
 
 CI also runs two integration suites:
 
-- native Remnawave backup flow with a real PostgreSQL container;
+- native Remnawave backup and restore flow with a real PostgreSQL container;
 - Docker image build and runtime flow, including the internal scheduler.
 
 Telegram, Discord, proxy, and Gmail setup are tested with local mocks, so CI does not require real delivery credentials.
