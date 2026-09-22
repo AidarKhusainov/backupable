@@ -188,10 +188,45 @@ cleanup_generated_files() {
     rm -f "\$BACKUP_DIR"/*"${REMARK}${TAG}"* 2>/dev/null || true
 }
 
+preflight_disk_space() {
+    local required_bytes=0 available_bytes input_size path
+
+    if ! [[ "\$DISK_SAFETY_BYTES" =~ ^[0-9]+$ ]]; then
+        echo "BACKUPABLE_DISK_SAFETY_BYTES must be a non-negative integer." >&2
+        return 1
+    fi
+
+    for path in "\${BACKUP_INPUTS[@]}"; do
+        [[ -e "\$path" ]] || { echo "Backup input not found: \$path" >&2; return 1; }
+        input_size=\$(du -sb -- "\$path" | awk '{print \$1}')
+        [[ "\$input_size" =~ ^[0-9]+$ ]] || { echo "Failed to determine backup input size: \$path" >&2; return 1; }
+        required_bytes=\$((required_bytes + input_size))
+    done
+
+    available_bytes=\$(df -PB1 -- "\$BACKUP_DIR" | awk 'NR == 2 {print \$4}')
+    [[ "\$available_bytes" =~ ^[0-9]+$ ]] || { echo "Failed to determine free space for \$BACKUP_DIR." >&2; return 1; }
+
+    if (( available_bytes < required_bytes + DISK_SAFETY_BYTES )); then
+        echo "Insufficient disk space for backup: available=\${available_bytes}B, inputs=\${required_bytes}B, safety=\${DISK_SAFETY_BYTES}B." >&2
+        return 1
+    fi
+}
+
+on_exit() {
+    local rc=\$?
+    trap - EXIT
+    cleanup_generated_files
+    if (( rc != 0 )); then
+        mark_failure || true
+    fi
+    exit "\$rc"
+}
+
 cleanup_generated_files
-trap cleanup_generated_files EXIT
+trap on_exit EXIT
 
 $BACKUP_DB_COMMAND
+preflight_disk_space
 
 if ! $COMPRESS "\$backup_name" $backup_directories_quoted; then
     echo "Failed to compress ${REMARK} files. Please check the server."
@@ -232,11 +267,9 @@ case "\$SCHEDULE_TYPE" in
 esac
 
 if [[ -n "\$state_value" ]]; then
-    state_tmp="\${STATE_FILE}.tmp.\$\$"
-    printf '%s\n' "\$state_value" > "\$state_tmp"
-    chmod 0600 "\$state_tmp"
-    mv -f "\$state_tmp" "\$STATE_FILE"
+    atomic_write "\$STATE_FILE" "\$state_value"
 fi
+atomic_write "\$SUCCESS_FILE" "\$(date +%s)"
 EOL
 
     chmod 700 "$BACKUP_PATH_TMP" || error "Failed to secure generated backup script: $BACKUP_PATH_TMP"
@@ -256,7 +289,7 @@ EOL
 
         case "$SCHEDULER_MODE" in
             cron)
-                cron_line="* * * * * $BACKUP_PATH --scheduled"
+                cron_line="* * * * * timeout --signal=TERM --kill-after=30s ${job_timeout_seconds}s $BACKUP_PATH --scheduled"
                 log "Setting up cron job..."
                 if (crontab -l 2>/dev/null | grep -Fv "$BACKUP_PATH" || true; echo "$cron_line") | crontab -; then
                     success "Cron polling job set up successfully."
