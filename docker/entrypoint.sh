@@ -5,8 +5,14 @@ umask 077
 BACKUPABLE_BACKUP_DIR="${BACKUPABLE_BACKUP_DIR:-/var/lib/backupable/jobs}"
 BACKUPABLE_STATE_DIR="${BACKUPABLE_STATE_DIR:-/var/lib/backupable/state}"
 BACKUPABLE_SCHEDULER_MODE="${BACKUPABLE_SCHEDULER_MODE:-internal}"
+BACKUPABLE_JOB_TIMEOUT_SECONDS="${BACKUPABLE_JOB_TIMEOUT_SECONDS:-7200}"
 
-export BACKUPABLE_BACKUP_DIR BACKUPABLE_STATE_DIR BACKUPABLE_SCHEDULER_MODE
+export BACKUPABLE_BACKUP_DIR BACKUPABLE_STATE_DIR BACKUPABLE_SCHEDULER_MODE BACKUPABLE_JOB_TIMEOUT_SECONDS
+
+if ! [[ "$BACKUPABLE_JOB_TIMEOUT_SECONDS" =~ ^[0-9]+$ ]] || (( BACKUPABLE_JOB_TIMEOUT_SECONDS < 1 )); then
+    echo "[ERROR] BACKUPABLE_JOB_TIMEOUT_SECONDS must be a positive integer." >&2
+    exit 1
+fi
 
 mkdir -p "$BACKUPABLE_BACKUP_DIR" "$BACKUPABLE_STATE_DIR"
 chmod 0700 "$BACKUPABLE_BACKUP_DIR" "$BACKUPABLE_STATE_DIR"
@@ -19,7 +25,7 @@ run_all_jobs() {
     for script in "$BACKUPABLE_BACKUP_DIR"/*_backupable_script.sh; do
         found=true
         echo "[INFO] Running backup job now: $script"
-        bash "$script"
+        timeout --signal=TERM --kill-after=30s "${BACKUPABLE_JOB_TIMEOUT_SECONDS}s" bash "$script"
     done
     shopt -u nullglob
 
