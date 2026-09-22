@@ -185,7 +185,7 @@ verify_daily_schedule() {
         DIRECTORIES=("$payload")
         BACKUP_DB_COMMAND=""
         COMPRESS="zip -q -r -s 49m"
-        PLATFORM_COMMAND="if [[ -e '$fail_flag' ]]; then printf 'daily-attempt\\n' >> '$RUN_LOG'; false; else cp \"\\$FILE\" '$DELIVERY_DIR/' && printf 'daily-run\\n' >> '$RUN_LOG'; fi"
+        PLATFORM_COMMAND="if [[ -e '$fail_flag' ]]; then printf 'daily-attempt\\n' >> '$RUN_LOG'; false; else cp \"\$FILE\" '$DELIVERY_DIR/' && printf 'daily-run\\n' >> '$RUN_LOG'; fi"
         generate_script
     )
 
