@@ -3,16 +3,22 @@ generate_script() {
     local BACKUP_PATH="${BACKUP_DIR}/_${REMARK}${SCRIPT_SUFFIX}"
     local BACKUP_PATH_TMP="${BACKUP_PATH}.tmp"
     local STATE_FILE="${STATE_DIR}/${REMARK}.last-run"
+    local SUCCESS_FILE="${STATE_DIR}/${REMARK}.last-success"
+    local FAILURE_FILE="${STATE_DIR}/${REMARK}.last-failure"
     local LOCK_FILE="${STATE_DIR}/${REMARK}.lock"
     local schedule_type="${SCHEDULE_TYPE:-interval}"
     local schedule_time="${SCHEDULE_TIME:-}"
     local schedule_tz="${SCHEDULE_TZ:-UTC}"
     local interval_seconds=0
+    local job_timeout_seconds="${BACKUPABLE_JOB_TIMEOUT_SECONDS:-7200}"
     local backup_directories_quoted=""
     local selected_dirs=()
     local dir
     local log_file
     local cron_line
+
+    [[ "$job_timeout_seconds" =~ ^[0-9]+$ ]] && (( job_timeout_seconds >= 1 )) ||
+        error "BACKUPABLE_JOB_TIMEOUT_SECONDS must be a positive integer."
 
     case "$schedule_type" in
         interval)
@@ -53,27 +59,66 @@ umask 077
 
 BACKUP_DIR="$BACKUP_DIR"
 STATE_FILE="$STATE_FILE"
+SUCCESS_FILE="$SUCCESS_FILE"
+FAILURE_FILE="$FAILURE_FILE"
 LOCK_FILE="$LOCK_FILE"
 SCHEDULE_TYPE="$schedule_type"
 INTERVAL_SECONDS=$interval_seconds
 SCHEDULE_TIME="$schedule_time"
 SCHEDULE_TZ="$schedule_tz"
+BACKUP_INPUTS=($backup_directories_quoted)
+DISK_SAFETY_BYTES="\${BACKUPABLE_DISK_SAFETY_BYTES:-67108864}"
+
+atomic_write() {
+    local target="\$1"
+    local value="\$2"
+    local tmp="\${target}.tmp.\$\$"
+
+    printf '%s\n' "\$value" > "\$tmp"
+    chmod 0600 "\$tmp"
+    mv -f "\$tmp" "\$target"
+}
+
+mark_failure() {
+    [[ -f "\$FAILURE_FILE" ]] && return 0
+    atomic_write "\$FAILURE_FILE" "\$(date +%s)"
+}
+
+resolve_daily_slot_for_date() {
+    local slot_date="\$1"
+    local schedule_hour schedule_minute start_minute minute candidate candidate_epoch resolved
+
+    IFS=: read -r schedule_hour schedule_minute <<< "\$SCHEDULE_TIME"
+    start_minute=\$((10#\$schedule_hour * 60 + 10#\$schedule_minute))
+
+    for ((minute = start_minute; minute < 1440; minute++)); do
+        printf -v candidate '%02d:%02d' "\$((minute / 60))" "\$((minute % 60))"
+        if candidate_epoch=\$(TZ="\$SCHEDULE_TZ" date -d "\$slot_date \$candidate:00" +%s 2>/dev/null); then
+            resolved=\$(TZ="\$SCHEDULE_TZ" date -d "@\$candidate_epoch" '+%F %H:%M')
+            if [[ "\$resolved" == "\$slot_date \$candidate" ]]; then
+                printf '%s\n' "\$candidate_epoch"
+                return 0
+            fi
+        fi
+    done
+
+    echo "Failed to resolve a valid daily schedule slot for \$slot_date \$SCHEDULE_TIME in \$SCHEDULE_TZ." >&2
+    return 1
+}
 
 latest_daily_slot_epoch() {
-    local now_epoch="${1:-\$(date +%s)}"
+    local now_epoch="\${1:-\$(date +%s)}"
     local today slot_epoch previous_day
 
     today=\$(TZ="\$SCHEDULE_TZ" date -d "@\$now_epoch" +%F)
 
-    if ! slot_epoch=\$(TZ="\$SCHEDULE_TZ" date -d "\$today \$SCHEDULE_TIME:00" +%s 2>/dev/null); then
-        echo "Failed to resolve daily schedule slot for \$today \$SCHEDULE_TIME in \$SCHEDULE_TZ." >&2
+    if ! slot_epoch=\$(resolve_daily_slot_for_date "\$today"); then
         return 1
     fi
 
     if (( slot_epoch > now_epoch )); then
         previous_day=\$(TZ="\$SCHEDULE_TZ" date -d "\$today -1 day" +%F)
-        if ! slot_epoch=\$(TZ="\$SCHEDULE_TZ" date -d "\$previous_day \$SCHEDULE_TIME:00" +%s 2>/dev/null); then
-            echo "Failed to resolve previous daily schedule slot in \$SCHEDULE_TZ." >&2
+        if ! slot_epoch=\$(resolve_daily_slot_for_date "\$previous_day"); then
             return 1
         fi
     fi
@@ -86,7 +131,11 @@ flock -n 9 || exit 0
 
 scheduled_slot=""
 if [[ "\${1:-}" == "--scheduled" ]]; then
-    now=\$(date +%s)
+    now="\${BACKUPABLE_NOW_EPOCH:-\$(date +%s)}"
+    if ! [[ "\$now" =~ ^[0-9]+$ ]]; then
+        echo "BACKUPABLE_NOW_EPOCH must be a Unix epoch integer." >&2
+        exit 1
+    fi
 
     case "\$SCHEDULE_TYPE" in
         interval)
@@ -130,10 +179,45 @@ cleanup_generated_files() {
     rm -f "\$BACKUP_DIR"/*"${REMARK}${TAG}"* 2>/dev/null || true
 }
 
+preflight_disk_space() {
+    local required_bytes=0 available_bytes input_size path
+
+    if ! [[ "\$DISK_SAFETY_BYTES" =~ ^[0-9]+$ ]]; then
+        echo "BACKUPABLE_DISK_SAFETY_BYTES must be a non-negative integer." >&2
+        return 1
+    fi
+
+    for path in "\${BACKUP_INPUTS[@]}"; do
+        [[ -e "\$path" ]] || { echo "Backup input not found: \$path" >&2; return 1; }
+        input_size=\$(du -sb -- "\$path" | awk '{print \$1}')
+        [[ "\$input_size" =~ ^[0-9]+$ ]] || { echo "Failed to determine backup input size: \$path" >&2; return 1; }
+        required_bytes=\$((required_bytes + input_size))
+    done
+
+    available_bytes=\$(df -PB1 -- "\$BACKUP_DIR" | awk 'NR == 2 {print \$4}')
+    [[ "\$available_bytes" =~ ^[0-9]+$ ]] || { echo "Failed to determine free space for \$BACKUP_DIR." >&2; return 1; }
+
+    if (( available_bytes < required_bytes + DISK_SAFETY_BYTES )); then
+        echo "Insufficient disk space for backup: available=\${available_bytes}B, inputs=\${required_bytes}B, safety=\${DISK_SAFETY_BYTES}B." >&2
+        return 1
+    fi
+}
+
+on_exit() {
+    local rc=\$?
+    trap - EXIT
+    cleanup_generated_files
+    if (( rc != 0 )); then
+        mark_failure || true
+    fi
+    exit "\$rc"
+}
+
 cleanup_generated_files
-trap cleanup_generated_files EXIT
+trap on_exit EXIT
 
 $BACKUP_DB_COMMAND
+preflight_disk_space
 
 if ! $COMPRESS "\$backup_name" $backup_directories_quoted; then
     echo "Failed to compress ${REMARK} files. Please check the server."
@@ -174,11 +258,10 @@ case "\$SCHEDULE_TYPE" in
 esac
 
 if [[ -n "\$state_value" ]]; then
-    state_tmp="\${STATE_FILE}.tmp.\$\$"
-    printf '%s\n' "\$state_value" > "\$state_tmp"
-    chmod 0600 "\$state_tmp"
-    mv -f "\$state_tmp" "\$STATE_FILE"
+    atomic_write "\$STATE_FILE" "\$state_value"
 fi
+atomic_write "\$SUCCESS_FILE" "\$(date +%s)"
+rm -f "\$FAILURE_FILE"
 EOL
 
     chmod 700 "$BACKUP_PATH_TMP" || error "Failed to secure generated backup script: $BACKUP_PATH_TMP"
@@ -198,7 +281,7 @@ EOL
 
         case "$SCHEDULER_MODE" in
             cron)
-                cron_line="* * * * * $BACKUP_PATH --scheduled"
+                cron_line="* * * * * timeout --signal=TERM --kill-after=30s ${job_timeout_seconds}s $BACKUP_PATH --scheduled"
                 log "Setting up cron job..."
                 if (crontab -l 2>/dev/null | grep -Fv "$BACKUP_PATH" || true; echo "$cron_line") | crontab -; then
                     success "Cron polling job set up successfully."

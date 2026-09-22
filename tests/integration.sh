@@ -142,12 +142,24 @@ verify_remnawave_archive() {
     unzip -p "$archive" "root/_ci_remnawave_backupable.sql" | grep -Fq "integration-ok" ||
         fail "PostgreSQL dump does not contain fixture data"
 
+    local restore_db="backupable_restore_ci"
+    docker exec remnawave-db dropdb -U backupable --if-exists "$restore_db"
+    docker exec remnawave-db createdb -U backupable "$restore_db"
+    unzip -p "$archive" "root/_ci_remnawave_backupable.sql" |
+        docker exec -i remnawave-db psql -U backupable -d "$restore_db" -v ON_ERROR_STOP=1 >/dev/null
+    assert_eq "integration-ok" "$(docker exec remnawave-db psql -U backupable -d "$restore_db" -tAc 'SELECT value FROM backupable_ci WHERE id = 1')" "restored PostgreSQL data"
+    docker exec remnawave-db dropdb -U backupable "$restore_db"
+
     assert_eq "700" "$(stat -c '%a' /root/_ci_remnawave_backupable_script.sh)" "generated job permissions"
     assert_eq "700" "$(stat -c '%a' /root/.backupable)" "state directory permissions"
     assert_file "/root/.backupable/ci_remnawave.last-run"
+    assert_file "/root/.backupable/ci_remnawave.last-success"
+    assert_not_file "/root/.backupable/ci_remnawave.last-failure"
     assert_not_file "/root/_ci_remnawave_backupable.sql"
     crontab -l | grep -Fq "/root/_ci_remnawave_backupable_script.sh --scheduled" ||
         fail "generated cron entry missing"
+    crontab -l | grep -Fq "timeout --signal=TERM --kill-after=30s 7200s /root/_ci_remnawave_backupable_script.sh --scheduled" ||
+        fail "generated cron entry is missing the job timeout"
 }
 
 verify_scheduler() {
@@ -230,6 +242,90 @@ verify_daily_schedule() {
     assert_eq "$state_before_manual" "$(cat "$state")" "manual backup must not consume or shift a daily scheduled slot"
 }
 
+verify_daily_dst_schedule() {
+    echo "[TEST] verify daily schedule through a DST spring-forward gap"
+    local payload="$TEST_ROOT/dst-payload.txt"
+    local job="/root/_ci_dst_backupable_script.sh"
+    local state="/root/.backupable/ci_dst.last-run"
+    local dst_now expected_slot before after
+    printf 'dst-test\n' > "$payload"
+
+    (
+        set -euo pipefail
+        REMARK="ci_dst"
+        SCHEDULE_TYPE="daily"
+        SCHEDULE_TIME="02:30"
+        SCHEDULE_TZ="Europe/Stockholm"
+        minutes=0
+        CAPTION="CI"
+        DIRECTORIES=("$payload")
+        BACKUP_DB_COMMAND=""
+        COMPRESS="zip -q -r -s 49m"
+        PLATFORM_COMMAND="cp \"\$FILE\" \"$DELIVERY_DIR/\" && printf 'dst-run\\n' >> \"$RUN_LOG\""
+        generate_script
+    )
+
+    printf '0\n' > "$state"
+    dst_now="$(date -u -d '2026-03-29 01:05:00 UTC' +%s)"
+    expected_slot="$(date -u -d '2026-03-29 01:00:00 UTC' +%s)"
+    before="$(grep -c '^dst-run$' "$RUN_LOG" || true)"
+
+    BACKUPABLE_NOW_EPOCH="$dst_now" bash "$job" --scheduled
+    after="$(grep -c '^dst-run$' "$RUN_LOG" || true)"
+    assert_eq "$expected_slot" "$(cat "$state")" "DST gap should run at the first valid local minute after the missing wall-clock time"
+    assert_eq "$((before + 1))" "$after" "DST gap slot should execute once"
+
+    BACKUPABLE_NOW_EPOCH="$dst_now" bash "$job" --scheduled
+    assert_eq "$after" "$(grep -c '^dst-run$' "$RUN_LOG" || true)" "DST gap slot should not execute twice"
+
+    local fallback_first fallback_second fallback_previous_slot fallback_expected
+    fallback_first="$(date -u -d '2026-10-25 00:35:00 UTC' +%s)"
+    fallback_second="$(date -u -d '2026-10-25 01:35:00 UTC' +%s)"
+    fallback_previous_slot="$(date -u -d '2026-10-24 00:30:00 UTC' +%s)"
+    fallback_expected="$(date -u -d '2026-10-25 01:30:00 UTC' +%s)"
+    printf '%s\n' "$fallback_previous_slot" > "$state"
+
+    before="$(grep -c '^dst-run$' "$RUN_LOG" || true)"
+    BACKUPABLE_NOW_EPOCH="$fallback_first" bash "$job" --scheduled
+    assert_eq "$before" "$(grep -c '^dst-run$' "$RUN_LOG" || true)" "DST overlap must not run during the first ambiguous occurrence"
+
+    BACKUPABLE_NOW_EPOCH="$fallback_second" bash "$job" --scheduled
+    after="$(grep -c '^dst-run$' "$RUN_LOG" || true)"
+    assert_eq "$fallback_expected" "$(cat "$state")" "DST overlap should record exactly one resolved slot"
+    assert_eq "$((before + 1))" "$after" "DST overlap slot should execute exactly once"
+
+    BACKUPABLE_NOW_EPOCH="$fallback_second" bash "$job" --scheduled
+    assert_eq "$after" "$(grep -c '^dst-run$' "$RUN_LOG" || true)" "completed DST overlap slot should not execute again"
+}
+
+verify_disk_preflight_and_failure_state() {
+    echo "[TEST] verify disk preflight and persistent failure state"
+    local job="/root/_ci_daily_backupable_script.sh"
+    local success_file="/root/.backupable/ci_daily.last-success"
+    local failure_file="/root/.backupable/ci_daily.last-failure"
+    local success_before first_failure healed_success
+
+    success_before="$(cat "$success_file")"
+    rm -f "$failure_file"
+
+    if BACKUPABLE_DISK_SAFETY_BYTES=9000000000000000000 bash "$job"; then
+        fail "disk preflight unexpectedly allowed an impossible safety margin"
+    fi
+    assert_file "$failure_file"
+    assert_eq "$success_before" "$(cat "$success_file")" "failed preflight must not advance last-success"
+    first_failure="$(cat "$failure_file")"
+
+    sleep 1
+    if BACKUPABLE_DISK_SAFETY_BYTES=9000000000000000000 bash "$job"; then
+        fail "second disk preflight unexpectedly succeeded"
+    fi
+    assert_eq "$first_failure" "$(cat "$failure_file")" "retries must preserve the first unresolved failure timestamp"
+
+    bash "$job"
+    assert_not_file "$failure_file"
+    healed_success="$(cat "$success_file")"
+    (( healed_success > 0 )) || fail "successful backup did not record last-success"
+}
 generate_lock_job() {
     echo "[TEST] verify per-job locking"
     local lock_payload="$TEST_ROOT/lock-payload.txt"
@@ -285,6 +381,8 @@ verify_failed_first_run() {
         fail "failed first run installed a cron entry"
     fi
     assert_not_file "/root/.backupable/ci_failure.last-run"
+    assert_not_file "/root/.backupable/ci_failure.last-success"
+    assert_file "/root/.backupable/ci_failure.last-failure"
 }
 
 create_fake_delivery_commands() {
@@ -360,6 +458,9 @@ verify_delivery_configuration() {
         fail "Telegram generated command does not contain proxy"
     [[ "$PLATFORM_COMMAND" == *"message_thread_id=77"* ]] ||
         fail "Telegram generated command does not contain topic ID"
+    [[ "$PLATFORM_COMMAND" == *"--max-time 1200"* ]] || fail "Telegram delivery is missing an overall transfer timeout"
+    [[ "$PLATFORM_COMMAND" == *"--speed-limit 1024 --speed-time 60"* ]] || fail "Telegram delivery is missing low-speed protection"
+    [[ "$PLATFORM_COMMAND" == *"--retry 3 --retry-max-time 3600"* ]] || fail "Telegram delivery is missing bounded retries"
     assert_contains "$FAKE_CURL_LOG" "api.telegram.org"
 
     discord_progress
@@ -370,6 +471,7 @@ verify_delivery_configuration() {
 
     REMARK="ci_gmail"
     gmail_progress
+    assert_eq "18" "$LIMITSIZE" "Gmail conservative split size"
     assert_file "/root/.backupable/ci_gmail.msmtprc"
     assert_file "/root/.backupable/ci_gmail.muttrc"
     assert_eq "600" "$(stat -c '%a' /root/.backupable/ci_gmail.msmtprc)" "msmtp config permissions"
@@ -386,6 +488,8 @@ generate_remnawave_job
 verify_remnawave_archive
 verify_scheduler
 verify_daily_schedule
+verify_daily_dst_schedule
+verify_disk_preflight_and_failure_state
 generate_lock_job
 verify_failed_first_run
 verify_delivery_configuration

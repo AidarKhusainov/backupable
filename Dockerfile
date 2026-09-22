@@ -28,7 +28,10 @@ RUN chmod 0755 /app/backupable.sh /app/docker/entrypoint.sh /app/docker/schedule
 ENV BACKUPABLE_BACKUP_DIR=/var/lib/backupable/jobs \
     BACKUPABLE_STATE_DIR=/var/lib/backupable/state \
     BACKUPABLE_SCHEDULER_MODE=internal \
-    BACKUPABLE_POLL_SECONDS=60
+    BACKUPABLE_POLL_SECONDS=60 \
+    BACKUPABLE_JOB_TIMEOUT_SECONDS=7200 \
+    BACKUPABLE_DISK_SAFETY_BYTES=67108864 \
+    BACKUPABLE_HEALTH_FAILURE_GRACE_SECONDS=300
 
 VOLUME ["/var/lib/backupable"]
 

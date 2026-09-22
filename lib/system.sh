@@ -31,6 +31,9 @@ package_for_command() {
         flock)
             echo "util-linux"
             ;;
+        timeout)
+            echo "coreutils"
+            ;;
         pg_dump)
             case "$package_manager" in
                 apt) echo "postgresql-client" ;;
@@ -148,6 +151,7 @@ ensure_command() {
 ensure_common_dependencies() {
     ensure_command zip
     ensure_command flock
+    ensure_command timeout
 
     case "$SCHEDULER_MODE" in
         cron)
