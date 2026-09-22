@@ -55,7 +55,7 @@ show_status() {
             daily)
                 schedule_time="$(sed -n 's/^SCHEDULE_TIME="\([^"]*\)"$/\1/p' "$script" | head -n 1)"
                 schedule_tz="$(sed -n 's/^SCHEDULE_TZ="\([^"]*\)"$/\1/p' "$script" | head -n 1)"
-                schedule="daily@$schedule_time[$schedule_tz]"
+                schedule="daily@${schedule_time}[${schedule_tz}]"
                 ;;
             interval)
                 schedule="interval"
