@@ -3,10 +3,9 @@ shell_quote() {
 }
 
 curl_command() {
+    printf "curl -fsS --connect-timeout 15 --max-time 1200 --speed-limit 1024 --speed-time 60 --retry 3 --retry-max-time 3600"
     if [[ -n "$CURL_PROXY_COMMAND_ARGS" ]]; then
-        printf "curl -fsS --connect-timeout 15 --max-time 1200 --speed-limit 1024 --speed-time 60 --retry 3 --retry-max-time 3600 %s" "$CURL_PROXY_COMMAND_ARGS"
-    else
-        printf "curl -fsS --connect-timeout 15 --max-time 1200 --speed-limit 1024 --speed-time 60 --retry 3 --retry-max-time 3600"
+        printf " %s" "$CURL_PROXY_COMMAND_ARGS"
     fi
 }
 
