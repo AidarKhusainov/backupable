@@ -54,7 +54,10 @@ clear() { :; }
 mkdir -p /var/lib/backupable/delivery
 
 REMARK="docker_ci"
-minutes=90
+SCHEDULE_TYPE="daily"
+SCHEDULE_TIME="${TEST_DAILY_TIME:?}"
+SCHEDULE_TZ="UTC"
+minutes=0
 CAPTION="CI"
 COMPRESS="zip -q -r -s 49m"
 PLATFORM_COMMAND='cp "$FILE" /var/lib/backupable/delivery/'
@@ -90,8 +93,12 @@ docker exec "$DB_CONTAINER" psql -U backupable -d remnawave -v ON_ERROR_STOP=1 -
     "CREATE TABLE backupable_docker_ci(id integer PRIMARY KEY, value text); INSERT INTO backupable_docker_ci VALUES (1, 'docker-integration-ok');" \
     >/dev/null
 
+daily_time="$(date -u -d '-1 minute' +%H:%M)"
+expected_slot="$(date -u -d "$(date -u -d '-1 minute' +%F) $daily_time:00" +%s)"
+
 echo "[TEST] generate Remnawave job inside Backupable container"
 docker run --rm \
+    -e TEST_DAILY_TIME="$daily_time" \
     -e BACKUPABLE_BACKUP_DIR=/var/lib/backupable/jobs \
     -e BACKUPABLE_STATE_DIR=/var/lib/backupable/state \
     -e BACKUPABLE_SCHEDULER_MODE=internal \
@@ -106,6 +113,7 @@ job="$DATA_DIR/jobs/_docker_ci_backupable_script.sh"
 state="$DATA_DIR/state/docker_ci.last-run"
 [[ -x "$job" ]] || fail "generated Docker-mode job not found"
 [[ -f "$state" ]] || fail "Docker-mode state file not found"
+[[ "$(cat "$state")" == "$expected_slot" ]] || fail "Docker-mode daily state is not anchored to the expected fixed slot"
 
 archive="$(find "$DATA_DIR/delivery" -maxdepth 1 -type f -name '*docker_ci_backupable.zip' -print -quit)"
 [[ -n "$archive" ]] || fail "Docker-mode delivered archive not found"
@@ -130,7 +138,7 @@ docker run --rm \
 
 echo "[TEST] verify internal scheduler executes persisted job"
 initial_count="$(find "$DATA_DIR/delivery" -maxdepth 1 -type f -name '*docker_ci_backupable.zip' | wc -l)"
-printf '%s\n' "$(( $(date +%s) - 6000 ))" > "$state"
+printf '0\n' > "$state"
 sleep 2
 
 docker run -d --name "$SCHEDULER_CONTAINER" \
@@ -157,5 +165,11 @@ done
     docker logs "$SCHEDULER_CONTAINER" >&2 || true
     fail "internal scheduler did not execute persisted job"
 }
+[[ "$(cat "$state")" == "$expected_slot" ]] || fail "Docker scheduler recorded execution time instead of the fixed daily slot"
+
+post_schedule_count="$(find "$DATA_DIR/delivery" -maxdepth 1 -type f -name '*docker_ci_backupable.zip' | wc -l)"
+sleep 2
+final_count="$(find "$DATA_DIR/delivery" -maxdepth 1 -type f -name '*docker_ci_backupable.zip' | wc -l)"
+[[ "$final_count" == "$post_schedule_count" ]] || fail "Docker scheduler executed the same daily slot more than once"
 
 echo "[PASS] Backupable Docker integration test suite"
