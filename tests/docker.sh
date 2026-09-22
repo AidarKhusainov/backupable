@@ -225,6 +225,7 @@ if docker run --rm \
 fi
 
 printf '%s\n' "$now_epoch" > "$DATA_DIR/state/docker_ci.last-success"
+rm -f "$DATA_DIR/state/docker_ci.last-failure"
 docker run --rm \
     -e BACKUPABLE_BACKUP_DIR=/var/lib/backupable/jobs \
     -e BACKUPABLE_STATE_DIR=/var/lib/backupable/state \
