@@ -4,9 +4,9 @@ shell_quote() {
 
 curl_command() {
     if [[ -n "$CURL_PROXY_COMMAND_ARGS" ]]; then
-        printf "curl -fsS --connect-timeout 15 %s" "$CURL_PROXY_COMMAND_ARGS"
+        printf "curl -fsS --connect-timeout 15 --max-time 1200 --speed-limit 1024 --speed-time 60 --retry 3 --retry-max-time 3600 %s" "$CURL_PROXY_COMMAND_ARGS"
     else
-        printf "curl -fsS --connect-timeout 15"
+        printf "curl -fsS --connect-timeout 15 --max-time 1200 --speed-limit 1024 --speed-time 60 --retry 3 --retry-max-time 3600"
     fi
 }
 
@@ -306,7 +306,7 @@ EOF
 
             CAPTION="<html><body><p><b>📦 From </b><code>\${ip}</code></p></body></html>"
             PLATFORM_COMMAND="printf '%s\\n' \"\$CAPTION\" | mutt -F \"$mutt_config\" -e 'set content_type=text/html' -s 'Backupable' -a \"\$FILE\" -- \"$GMAIL_ADDRESS\""
-            LIMITSIZE=24
+            LIMITSIZE=18
             break
         else
             wrong "Authentication failed! Check your email or app password and try again."
