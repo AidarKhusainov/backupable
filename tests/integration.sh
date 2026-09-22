@@ -795,7 +795,6 @@ verify_disk_preflight_and_failure_state() {
     healed_success="$(cat "$success_file")"
     (( healed_success >= first_failure )) || fail "successful backup did not heal the previous failure state"
 }
-
 generate_lock_job() {
     echo "[TEST] verify per-job locking"
     local lock_payload="$TEST_ROOT/lock-payload.txt"
