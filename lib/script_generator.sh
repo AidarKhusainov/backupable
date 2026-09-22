@@ -80,17 +80,8 @@ atomic_write() {
 }
 
 mark_failure() {
-    local success_epoch=0 failure_epoch=0 now_epoch
-
-    [[ -f "\$SUCCESS_FILE" ]] && success_epoch=\$(cat "\$SUCCESS_FILE" 2>/dev/null || echo 0)
-    [[ -f "\$FAILURE_FILE" ]] && failure_epoch=\$(cat "\$FAILURE_FILE" 2>/dev/null || echo 0)
-
-    if [[ "\$success_epoch" =~ ^[0-9]+$ && "\$failure_epoch" =~ ^[0-9]+$ ]] && (( failure_epoch > success_epoch )); then
-        return 0
-    fi
-
-    now_epoch=\$(date +%s)
-    atomic_write "\$FAILURE_FILE" "\$now_epoch"
+    [[ -f "\$FAILURE_FILE" ]] && return 0
+    atomic_write "\$FAILURE_FILE" "\$(date +%s)"
 }
 
 resolve_daily_slot_for_date() {
@@ -270,6 +261,7 @@ if [[ -n "\$state_value" ]]; then
     atomic_write "\$STATE_FILE" "\$state_value"
 fi
 atomic_write "\$SUCCESS_FILE" "\$(date +%s)"
+rm -f "\$FAILURE_FILE"
 EOL
 
     chmod 700 "$BACKUP_PATH_TMP" || error "Failed to secure generated backup script: $BACKUP_PATH_TMP"
