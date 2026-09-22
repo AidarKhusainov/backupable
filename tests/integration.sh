@@ -164,6 +164,72 @@ verify_scheduler() {
     assert_eq "$((before + 1))" "$after" "job should run after interval expires"
 }
 
+verify_daily_schedule() {
+    echo "[TEST] verify fixed daily schedule, retry, catch-up, and manual-run semantics"
+    local payload="$TEST_ROOT/daily-payload.txt"
+    local fail_flag="$TEST_ROOT/daily-fail"
+    local daily_time expected_slot job state
+    printf 'daily-test\n' > "$payload"
+
+    daily_time="$(date -u -d '-1 minute' +%H:%M)"
+    expected_slot="$(date -u -d "$(date -u -d '-1 minute' +%F) $daily_time:00" +%s)"
+
+    (
+        set -euo pipefail
+        REMARK="ci_daily"
+        SCHEDULE_TYPE="daily"
+        SCHEDULE_TIME="$daily_time"
+        SCHEDULE_TZ="UTC"
+        minutes=0
+        CAPTION="CI"
+        DIRECTORIES=("$payload")
+        BACKUP_DB_COMMAND=""
+        COMPRESS="zip -q -r -s 49m"
+        PLATFORM_COMMAND="if [[ -e '$fail_flag' ]]; then printf 'daily-attempt\\n' >> '$RUN_LOG'; false; else cp \"\$FILE\" '$DELIVERY_DIR/' && printf 'daily-run\\n' >> '$RUN_LOG'; fi"
+        generate_script
+    )
+
+    job="/root/_ci_daily_backupable_script.sh"
+    state="/root/.backupable/ci_daily.last-run"
+    assert_file "$job"
+    assert_file "$state"
+    assert_eq "$expected_slot" "$(cat "$state")" "initial daily state should store the latest scheduled slot"
+
+    local initial_runs
+    initial_runs="$(grep -c '^daily-run$' "$RUN_LOG" || true)"
+
+    bash "$job" --scheduled
+    assert_eq "$initial_runs" "$(grep -c '^daily-run$' "$RUN_LOG" || true)" "completed daily slot should not run twice"
+
+    printf '0\n' > "$state"
+    touch "$fail_flag"
+    if bash "$job" --scheduled; then
+        fail "daily scheduled run unexpectedly succeeded while delivery was forced to fail"
+    fi
+    assert_eq "0" "$(cat "$state")" "failed daily run must not close the scheduled slot"
+    assert_eq "1" "$(grep -c '^daily-attempt$' "$RUN_LOG" || true)" "failed daily run should record one attempt"
+
+    if bash "$job" --scheduled; then
+        fail "daily retry unexpectedly succeeded while delivery was forced to fail"
+    fi
+    assert_eq "0" "$(cat "$state")" "failed daily retry must keep the scheduled slot open"
+    assert_eq "2" "$(grep -c '^daily-attempt$' "$RUN_LOG" || true)" "scheduler should retry the same open slot"
+
+    rm -f "$fail_flag"
+    bash "$job" --scheduled
+    assert_eq "$expected_slot" "$(cat "$state")" "successful retry must close the original fixed slot"
+
+    local after_retry_runs
+    after_retry_runs="$(grep -c '^daily-run$' "$RUN_LOG" || true)"
+    bash "$job" --scheduled
+    assert_eq "$after_retry_runs" "$(grep -c '^daily-run$' "$RUN_LOG" || true)" "successful retry must not create schedule drift"
+
+    local state_before_manual
+    state_before_manual="$(cat "$state")"
+    bash "$job"
+    assert_eq "$state_before_manual" "$(cat "$state")" "manual backup must not consume or shift a daily scheduled slot"
+}
+
 generate_lock_job() {
     echo "[TEST] verify per-job locking"
     local lock_payload="$TEST_ROOT/lock-payload.txt"
@@ -319,6 +385,7 @@ setup_remnawave_fixture
 generate_remnawave_job
 verify_remnawave_archive
 verify_scheduler
+verify_daily_schedule
 generate_lock_job
 verify_failed_first_run
 verify_delivery_configuration

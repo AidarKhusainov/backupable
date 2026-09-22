@@ -8,7 +8,8 @@ Remnawave is supported directly. Telegram and Discord delivery can also use an H
 
 ## Features
 
-- configurable backup intervals;
+- fixed daily wall-clock schedules with explicit IANA timezones;
+- configurable legacy backup intervals;
 - Telegram, Discord, and Gmail delivery;
 - HTTP/SOCKS proxy support for Telegram and Discord;
 - Telegram forum topics;
@@ -81,13 +82,18 @@ Proxy credentials are treated as secrets and are not echoed during setup.
 
 ## Scheduling
 
-Backup intervals can be set from 1 to 1440 minutes.
+New jobs can use one of two scheduling modes:
 
-Native mode uses cron to check jobs once per minute. Docker mode does the same through its internal scheduler. Each generated job keeps its own last-run state and decides whether the configured interval has elapsed.
+- **Daily at a fixed local time** (recommended): choose an `HH:MM` wall-clock time and an explicit IANA timezone such as `UTC`, `Europe/Moscow`, or `Europe/Stockholm`.
+- **Interval mode**: the legacy behavior, from 1 to 1440 minutes between successful runs.
 
-`flock` prevents overlapping runs of the same job.
+Native mode uses root cron as a one-minute poller. Docker mode uses the internal scheduler with the same polling model. The generated job decides whether its schedule is due.
 
-A job is registered only after its first backup succeeds. Failed scheduled runs are retried on the next scheduler tick.
+Daily scheduling is slot-based rather than `last success + 24h`. For example, a job scheduled for `00:00` that fails and finally succeeds at `00:07` records the `00:00` slot as completed, so the next scheduled run is still `00:00` the following day. Failed scheduled runs are retried on the next scheduler tick without moving the next slot.
+
+If Backupable was stopped when a daily slot occurred, the most recent missed slot is run once after startup. It does not replay every missed day. Manual `backup-now` runs do not consume or shift a daily scheduled slot.
+
+`flock` prevents overlapping runs of the same job. A job is registered only after its first backup succeeds.
 
 ## Security notes
 

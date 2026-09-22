@@ -30,7 +30,7 @@ run_all_jobs() {
 
 show_status() {
     local found=false
-    local script remark state_file last_run
+    local script remark state_file last_run schedule_type schedule_time schedule_tz schedule
 
     echo "Backupable container status"
     echo "  scheduler: $BACKUPABLE_SCHEDULER_MODE"
@@ -49,7 +49,23 @@ show_status() {
         else
             last_run="never"
         fi
-        printf '  %-24s last-run=%s\n' "$remark" "$last_run"
+
+        schedule_type="$(sed -n 's/^SCHEDULE_TYPE="\([^"]*\)"$/\1/p' "$script" | head -n 1)"
+        case "$schedule_type" in
+            daily)
+                schedule_time="$(sed -n 's/^SCHEDULE_TIME="\([^"]*\)"$/\1/p' "$script" | head -n 1)"
+                schedule_tz="$(sed -n 's/^SCHEDULE_TZ="\([^"]*\)"$/\1/p' "$script" | head -n 1)"
+                schedule="daily@${schedule_time}[${schedule_tz}]"
+                ;;
+            interval)
+                schedule="interval"
+                ;;
+            *)
+                schedule="legacy"
+                ;;
+        esac
+
+        printf '  %-24s schedule=%-30s state=%s\n' "$remark" "$schedule" "$last_run"
     done
     shopt -u nullglob
 

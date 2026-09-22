@@ -62,7 +62,14 @@ review_backup_configuration() {
     clear
     print "Step 8/8: Review and create\n"
     print "Job name: ${REMARK}"
-    print "Schedule: every ${minutes} minutes"
+    case "${SCHEDULE_TYPE:-interval}" in
+        daily)
+            print "Schedule: daily at ${SCHEDULE_TIME} (${SCHEDULE_TZ})"
+            ;;
+        interval)
+            print "Schedule: every ${minutes} minutes"
+            ;;
+    esac
     print "Template: ${TEMPLATE_NAME:-Custom}"
     print "Delivery: ${PLATFORM_NAME:-Unknown}"
     print "Proxy: ${PROXY_ENABLED:-disabled}"
@@ -81,7 +88,7 @@ review_backup_configuration() {
 
 start_backup() {
     generate_remark
-    generate_timer
+    generate_schedule
     generate_template
     toggle_directories
     configure_proxy

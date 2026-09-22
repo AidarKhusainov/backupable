@@ -4,11 +4,34 @@ generate_script() {
     local BACKUP_PATH_TMP="${BACKUP_PATH}.tmp"
     local STATE_FILE="${STATE_DIR}/${REMARK}.last-run"
     local LOCK_FILE="${STATE_DIR}/${REMARK}.lock"
+    local schedule_type="${SCHEDULE_TYPE:-interval}"
+    local schedule_time="${SCHEDULE_TIME:-}"
+    local schedule_tz="${SCHEDULE_TZ:-UTC}"
+    local interval_seconds=0
     local backup_directories_quoted=""
     local selected_dirs=()
     local dir
     local log_file
     local cron_line
+
+    case "$schedule_type" in
+        interval)
+            [[ "${minutes:-}" =~ ^[0-9]+$ ]] || error "Interval schedule requires a numeric minute value."
+            (( minutes >= 1 && minutes <= 1440 )) || error "Interval must be between 1 and 1440 minutes."
+            interval_seconds=$((minutes * 60))
+            ;;
+        daily)
+            [[ "$schedule_time" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]] ||
+                error "Daily schedule time must use 24-hour HH:MM format."
+            if [[ "$schedule_tz" != "UTC" && "$schedule_tz" != "Etc/UTC" && "$schedule_tz" != "GMT" ]]; then
+                [[ "$schedule_tz" != /* && "$schedule_tz" != *".."* && -f "/usr/share/zoneinfo/$schedule_tz" ]] ||
+                    error "Daily schedule timezone is not a valid IANA zone: $schedule_tz"
+            fi
+            ;;
+        *)
+            error "Unsupported schedule type: $schedule_type"
+            ;;
+    esac
 
     for dir in "${DIRECTORIES[@]}"; do
         [[ -n "$dir" ]] && selected_dirs+=("$dir")
@@ -31,19 +54,63 @@ umask 077
 BACKUP_DIR="$BACKUP_DIR"
 STATE_FILE="$STATE_FILE"
 LOCK_FILE="$LOCK_FILE"
-INTERVAL_SECONDS=$((minutes * 60))
+SCHEDULE_TYPE="$schedule_type"
+INTERVAL_SECONDS=$interval_seconds
+SCHEDULE_TIME="$schedule_time"
+SCHEDULE_TZ="$schedule_tz"
+
+latest_daily_slot_epoch() {
+    local now_epoch="${1:-\$(date +%s)}"
+    local today slot_epoch previous_day
+
+    today=\$(TZ="\$SCHEDULE_TZ" date -d "@\$now_epoch" +%F)
+
+    if ! slot_epoch=\$(TZ="\$SCHEDULE_TZ" date -d "\$today \$SCHEDULE_TIME:00" +%s 2>/dev/null); then
+        echo "Failed to resolve daily schedule slot for \$today \$SCHEDULE_TIME in \$SCHEDULE_TZ." >&2
+        return 1
+    fi
+
+    if (( slot_epoch > now_epoch )); then
+        previous_day=\$(TZ="\$SCHEDULE_TZ" date -d "\$today -1 day" +%F)
+        if ! slot_epoch=\$(TZ="\$SCHEDULE_TZ" date -d "\$previous_day \$SCHEDULE_TIME:00" +%s 2>/dev/null); then
+            echo "Failed to resolve previous daily schedule slot in \$SCHEDULE_TZ." >&2
+            return 1
+        fi
+    fi
+
+    printf '%s\n' "\$slot_epoch"
+}
 
 exec 9>"\$LOCK_FILE"
 flock -n 9 || exit 0
 
+scheduled_slot=""
 if [[ "\${1:-}" == "--scheduled" ]]; then
     now=\$(date +%s)
-    if [[ -f "\$STATE_FILE" ]]; then
-        last_run=\$(cat "\$STATE_FILE" 2>/dev/null || echo 0)
-        if [[ "\$last_run" =~ ^[0-9]+$ ]] && (( last_run <= now && now - last_run < INTERVAL_SECONDS )); then
-            exit 0
-        fi
-    fi
+
+    case "\$SCHEDULE_TYPE" in
+        interval)
+            if [[ -f "\$STATE_FILE" ]]; then
+                last_run=\$(cat "\$STATE_FILE" 2>/dev/null || echo 0)
+                if [[ "\$last_run" =~ ^[0-9]+$ ]] && (( last_run <= now && now - last_run < INTERVAL_SECONDS )); then
+                    exit 0
+                fi
+            fi
+            ;;
+        daily)
+            scheduled_slot=\$(latest_daily_slot_epoch "\$now")
+            if [[ -f "\$STATE_FILE" ]]; then
+                last_completed_slot=\$(cat "\$STATE_FILE" 2>/dev/null || echo 0)
+                if [[ "\$last_completed_slot" =~ ^[0-9]+$ ]] && (( last_completed_slot >= scheduled_slot )); then
+                    exit 0
+                fi
+            fi
+            ;;
+        *)
+            echo "Unsupported schedule type: \$SCHEDULE_TYPE" >&2
+            exit 1
+            ;;
+    esac
 fi
 
 ip="\${BACKUPABLE_SOURCE_LABEL:-}"
@@ -89,7 +156,29 @@ else
     exit 1
 fi
 
-date +%s > "\$STATE_FILE"
+state_value=""
+case "\$SCHEDULE_TYPE" in
+    interval)
+        state_value=\$(date +%s)
+        ;;
+    daily)
+        case "\${1:-}" in
+            --scheduled)
+                state_value="\$scheduled_slot"
+                ;;
+            --initial)
+                state_value=\$(latest_daily_slot_epoch)
+                ;;
+        esac
+        ;;
+esac
+
+if [[ -n "\$state_value" ]]; then
+    state_tmp="\${STATE_FILE}.tmp.\$\$"
+    printf '%s\n' "\$state_value" > "\$state_tmp"
+    chmod 0600 "\$state_tmp"
+    mv -f "\$state_tmp" "\$STATE_FILE"
+fi
 EOL
 
     chmod 700 "$BACKUP_PATH_TMP" || error "Failed to secure generated backup script: $BACKUP_PATH_TMP"
@@ -99,7 +188,7 @@ EOL
     chmod 600 "$log_file"
 
     log "Running the backup script..."
-    if bash "$BACKUP_PATH_TMP" 2>&1 | tee "$log_file"; then
+    if bash "$BACKUP_PATH_TMP" --initial 2>&1 | tee "$log_file"; then
         success "Backup script run successfully."
 
         mv "$BACKUP_PATH_TMP" "$BACKUP_PATH" || {
@@ -112,7 +201,7 @@ EOL
                 cron_line="* * * * * $BACKUP_PATH --scheduled"
                 log "Setting up cron job..."
                 if (crontab -l 2>/dev/null | grep -Fv "$BACKUP_PATH" || true; echo "$cron_line") | crontab -; then
-                    success "Cron job set up successfully. Backups will run every $minutes minutes."
+                    success "Cron polling job set up successfully."
                 else
                     rm -f "$log_file"
                     error "Failed to set up cron job. Set it up manually: $cron_line"
@@ -130,7 +219,14 @@ EOL
         rm -f "$log_file"
         success "Your backup system is set up and running."
         success "Backup script location: $BACKUP_PATH"
-        success "Backup interval: every $minutes minutes"
+        case "$schedule_type" in
+            interval)
+                success "Backup interval: every $minutes minutes"
+                ;;
+            daily)
+                success "Backup schedule: daily at $schedule_time ($schedule_tz)"
+                ;;
+        esac
         success "First backup created and sent."
         exit 0
     else

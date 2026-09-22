@@ -51,26 +51,88 @@ generate_caption() {
     sleep 1
 }
 
-generate_timer() {
+generate_schedule() {
     clear
     print "Step 2/8: Schedule\n"
-    print "Choose the interval between backup runs."
-    print "Backupable checks scheduled jobs once per minute and runs them only when the configured interval has elapsed.\n"
+    print "Choose how scheduled backups should be triggered.\n"
+    print "1) Daily at a fixed local time (recommended)"
+    print "2) Every N minutes (legacy interval mode)"
+    print ""
 
     while true; do
-        input "Enter the number of minutes (1-1440): " minutes
+        input "Choose schedule type [1]: " schedule_choice
+        schedule_choice="${schedule_choice:-1}"
 
-        if ! [[ "$minutes" =~ ^[0-9]+$ ]]; then
-            wrong "Please enter a valid number."
-        elif [ "$minutes" -lt 1 ] || [ "$minutes" -gt 1440 ]; then
-            wrong "Number must be between 1 and 1440."
-        else
-            break
-        fi
+        case "$schedule_choice" in
+            1)
+                SCHEDULE_TYPE="daily"
+
+                while true; do
+                    input "Daily backup time in HH:MM [00:00]: " SCHEDULE_TIME
+                    SCHEDULE_TIME="${SCHEDULE_TIME:-00:00}"
+
+                    if [[ "$SCHEDULE_TIME" =~ ^([01][0-9]|2[0-3]):[0-5][0-9]$ ]]; then
+                        break
+                    fi
+                    wrong "Time must use 24-hour HH:MM format."
+                done
+
+                local default_timezone="${TZ:-UTC}"
+                if [[ "$default_timezone" != "UTC" && "$default_timezone" != "Etc/UTC" && "$default_timezone" != "GMT" ]]; then
+                    if [[ "$default_timezone" == /* || "$default_timezone" == *".."* || ! -f "/usr/share/zoneinfo/$default_timezone" ]]; then
+                        default_timezone="UTC"
+                    fi
+                fi
+
+                while true; do
+                    input "IANA timezone [$default_timezone]: " SCHEDULE_TZ
+                    SCHEDULE_TZ="${SCHEDULE_TZ:-$default_timezone}"
+
+                    if [[ "$SCHEDULE_TZ" == "UTC" || "$SCHEDULE_TZ" == "Etc/UTC" || "$SCHEDULE_TZ" == "GMT" ]]; then
+                        break
+                    fi
+                    if [[ "$SCHEDULE_TZ" != /* && "$SCHEDULE_TZ" != *".."* && -f "/usr/share/zoneinfo/$SCHEDULE_TZ" ]]; then
+                        break
+                    fi
+                    wrong "Timezone must be a valid IANA zone, for example UTC, Europe/Moscow, or Europe/Stockholm."
+                done
+
+                minutes=0
+                success "Backup schedule set to every day at $SCHEDULE_TIME ($SCHEDULE_TZ)."
+                break
+                ;;
+            2)
+                SCHEDULE_TYPE="interval"
+                SCHEDULE_TIME=""
+                SCHEDULE_TZ=""
+
+                while true; do
+                    input "Enter the number of minutes (1-1440): " minutes
+
+                    if ! [[ "$minutes" =~ ^[0-9]+$ ]]; then
+                        wrong "Please enter a valid number."
+                    elif [ "$minutes" -lt 1 ] || [ "$minutes" -gt 1440 ]; then
+                        wrong "Number must be between 1 and 1440."
+                    else
+                        break
+                    fi
+                done
+
+                success "Backup interval set to every $minutes minutes."
+                break
+                ;;
+            *)
+                wrong "Invalid option. Choose 1 or 2."
+                ;;
+        esac
     done
 
-    success "Backup interval set to every $minutes minutes."
     sleep 1
+}
+
+# Kept for compatibility with integrations that still call the old helper name.
+generate_timer() {
+    generate_schedule
 }
 
 generate_template() {
