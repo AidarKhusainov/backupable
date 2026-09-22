@@ -172,4 +172,65 @@ sleep 2
 final_count="$(find "$DATA_DIR/delivery" -maxdepth 1 -type f -name '*docker_ci_backupable.zip' | wc -l)"
 [[ "$final_count" == "$post_schedule_count" ]] || fail "Docker scheduler executed the same daily slot more than once"
 
+echo "[TEST] verify scheduler job timeout prevents head-of-line blocking"
+docker rm -f "$SCHEDULER_CONTAINER" >/dev/null
+cat > "$DATA_DIR/jobs/_aa_slow_backupable_script.sh" <<'EOF'
+#!/usr/bin/env bash
+sleep 5
+EOF
+cat > "$DATA_DIR/jobs/_bb_fast_backupable_script.sh" <<'EOF'
+#!/usr/bin/env bash
+printf 'fast\n' > /var/lib/backupable/fast-ran
+EOF
+chmod 0700 "$DATA_DIR/jobs/_aa_slow_backupable_script.sh" "$DATA_DIR/jobs/_bb_fast_backupable_script.sh"
+rm -f "$DATA_DIR/fast-ran"
+
+docker run -d --name "$SCHEDULER_CONTAINER" \
+    -e BACKUPABLE_BACKUP_DIR=/var/lib/backupable/jobs \
+    -e BACKUPABLE_STATE_DIR=/var/lib/backupable/state \
+    -e BACKUPABLE_SCHEDULER_MODE=internal \
+    -e BACKUPABLE_POLL_SECONDS=1 \
+    -e BACKUPABLE_JOB_TIMEOUT_SECONDS=1 \
+    -v "$DATA_DIR:/var/lib/backupable" \
+    -v "$REMNAWAVE_DIR:/opt/remnawave:ro" \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    "$IMAGE" >/dev/null
+
+fast_ran=false
+for _ in {1..6}; do
+    if [[ -f "$DATA_DIR/fast-ran" ]]; then
+        fast_ran=true
+        break
+    fi
+    sleep 1
+done
+[[ "$fast_ran" == true ]] || {
+    docker logs "$SCHEDULER_CONTAINER" >&2 || true
+    fail "a timed-out job blocked later scheduler jobs"
+}
+
+echo "[TEST] verify healthcheck reports persistent unresolved backup failures"
+now_epoch="$(date +%s)"
+printf '%s\n' "$((now_epoch - 10))" > "$DATA_DIR/state/docker_ci.last-failure"
+printf '%s\n' "$((now_epoch - 20))" > "$DATA_DIR/state/docker_ci.last-success"
+
+if docker run --rm \
+    -e BACKUPABLE_BACKUP_DIR=/var/lib/backupable/jobs \
+    -e BACKUPABLE_STATE_DIR=/var/lib/backupable/state \
+    -e BACKUPABLE_HEALTH_FAILURE_GRACE_SECONDS=0 \
+    -v "$DATA_DIR:/var/lib/backupable" \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    "$IMAGE" /app/docker/healthcheck.sh; then
+    fail "healthcheck stayed healthy with an unresolved backup failure"
+fi
+
+printf '%s\n' "$now_epoch" > "$DATA_DIR/state/docker_ci.last-success"
+docker run --rm \
+    -e BACKUPABLE_BACKUP_DIR=/var/lib/backupable/jobs \
+    -e BACKUPABLE_STATE_DIR=/var/lib/backupable/state \
+    -e BACKUPABLE_HEALTH_FAILURE_GRACE_SECONDS=0 \
+    -v "$DATA_DIR:/var/lib/backupable" \
+    -v /var/run/docker.sock:/var/run/docker.sock \
+    "$IMAGE" /app/docker/healthcheck.sh
+
 echo "[PASS] Backupable Docker integration test suite"
