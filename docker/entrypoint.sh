@@ -61,8 +61,7 @@ show_status() {
         last_success="$(cat "$success_file" 2>/dev/null || echo never)"
         last_failure="$(cat "$failure_file" 2>/dev/null || echo never)"
         health="ok"
-        if [[ "$last_failure" =~ ^[0-9]+$ ]] &&
-           { [[ ! "$last_success" =~ ^[0-9]+$ ]] || (( last_failure > last_success )); }; then
+        if [[ "$last_failure" =~ ^[0-9]+$ ]]; then
             health="failed"
         fi
 
