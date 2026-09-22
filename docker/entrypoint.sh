@@ -36,7 +36,7 @@ run_all_jobs() {
 
 show_status() {
     local found=false
-    local script remark state_file last_run schedule_type schedule_time schedule_tz schedule
+    local script remark state_file success_file failure_file last_run last_success last_failure health schedule_type schedule_time schedule_tz schedule
 
     echo "Backupable container status"
     echo "  scheduler: $BACKUPABLE_SCHEDULER_MODE"
@@ -56,6 +56,16 @@ show_status() {
             last_run="never"
         fi
 
+        success_file="$BACKUPABLE_STATE_DIR/$remark.last-success"
+        failure_file="$BACKUPABLE_STATE_DIR/$remark.last-failure"
+        last_success="$(cat "$success_file" 2>/dev/null || echo never)"
+        last_failure="$(cat "$failure_file" 2>/dev/null || echo never)"
+        health="ok"
+        if [[ "$last_failure" =~ ^[0-9]+$ ]] &&
+           { [[ ! "$last_success" =~ ^[0-9]+$ ]] || (( last_failure > last_success )); }; then
+            health="failed"
+        fi
+
         schedule_type="$(sed -n 's/^SCHEDULE_TYPE="\([^"]*\)"$/\1/p' "$script" | head -n 1)"
         case "$schedule_type" in
             daily)
@@ -71,7 +81,8 @@ show_status() {
                 ;;
         esac
 
-        printf '  %-24s schedule=%-30s state=%s\n' "$remark" "$schedule" "$last_run"
+        printf '  %-24s schedule=%-30s health=%-6s slot=%s success=%s failure=%s\n' \
+            "$remark" "$schedule" "$health" "$last_run" "$last_success" "$last_failure"
     done
     shopt -u nullglob
 
