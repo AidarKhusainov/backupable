@@ -121,15 +121,13 @@ latest_daily_slot_epoch() {
 
     today=\$(TZ="\$SCHEDULE_TZ" date -d "@\$now_epoch" +%F)
 
-    if ! slot_epoch=\$(TZ="\$SCHEDULE_TZ" date -d "\$today \$SCHEDULE_TIME:00" +%s 2>/dev/null); then
-        echo "Failed to resolve daily schedule slot for \$today \$SCHEDULE_TIME in \$SCHEDULE_TZ." >&2
+    if ! slot_epoch=\$(resolve_daily_slot_for_date "\$today"); then
         return 1
     fi
 
     if (( slot_epoch > now_epoch )); then
         previous_day=\$(TZ="\$SCHEDULE_TZ" date -d "\$today -1 day" +%F)
-        if ! slot_epoch=\$(TZ="\$SCHEDULE_TZ" date -d "\$previous_day \$SCHEDULE_TIME:00" +%s 2>/dev/null); then
-            echo "Failed to resolve previous daily schedule slot in \$SCHEDULE_TZ." >&2
+        if ! slot_epoch=\$(resolve_daily_slot_for_date "\$previous_day"); then
             return 1
         fi
     fi
@@ -142,7 +140,11 @@ flock -n 9 || exit 0
 
 scheduled_slot=""
 if [[ "\${1:-}" == "--scheduled" ]]; then
-    now=\$(date +%s)
+    now="\${BACKUPABLE_NOW_EPOCH:-\$(date +%s)}"
+    if ! [[ "\$now" =~ ^[0-9]+$ ]]; then
+        echo "BACKUPABLE_NOW_EPOCH must be a Unix epoch integer." >&2
+        exit 1
+    fi
 
     case "\$SCHEDULE_TYPE" in
         interval)
