@@ -17,18 +17,13 @@ shopt -s nullglob
 for script in "$BACKUP_DIR"/*_backupable_script.sh; do
     remark="${script##*/_}"
     remark="${remark%_backupable_script.sh}"
-    success_file="$STATE_DIR/$remark.last-success"
     failure_file="$STATE_DIR/$remark.last-failure"
-    success_epoch=0
     failure_epoch=0
 
-    [[ -f "$success_file" ]] && success_epoch=$(cat "$success_file" 2>/dev/null || echo 0)
     [[ -f "$failure_file" ]] && failure_epoch=$(cat "$failure_file" 2>/dev/null || echo 0)
-
-    [[ "$success_epoch" =~ ^[0-9]+$ ]] || success_epoch=0
     [[ "$failure_epoch" =~ ^[0-9]+$ ]] || failure_epoch=0
 
-    if (( failure_epoch > success_epoch && now - failure_epoch >= FAILURE_GRACE_SECONDS )); then
+    if (( failure_epoch > 0 && now - failure_epoch >= FAILURE_GRACE_SECONDS )); then
         echo "[ERROR] Backup job has an unresolved failure: $remark" >&2
         exit 1
     fi
